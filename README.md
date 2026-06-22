@@ -111,10 +111,28 @@ npm start
 
 ---
 
+## Getting API Keys
+
+### Gemini API Key (Required for BYOK mode)
+
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Click **Create API Key**
+4. Copy the key and paste it in the app
+
+### Groq API Key (Optional)
+
+1. Go to [Groq Console](https://console.groq.com/keys)
+2. Sign up or log in
+3. Click **Create API Key**
+4. Copy the key and paste it in the app under settings
+
+---
+
 ## Usage
 
 1. Launch the app with `npm start`
-2. Enter your Gemini API key in the main window
+2. Enter your API key in the main window (Gemini or Groq)
 3. Select a profile (Interview, Sales Call, Meeting, etc.)
 4. Click **Start Session**
 5. Position the overlay window using keyboard shortcuts
