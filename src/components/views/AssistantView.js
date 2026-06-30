@@ -6,6 +6,9 @@ export class AssistantView extends LitElement {
             height: 100%;
             display: flex;
             flex-direction: column;
+            padding: 0 8px 8px;
+            gap: 8px;
+            box-sizing: border-box;
         }
 
         * {
@@ -13,15 +16,20 @@ export class AssistantView extends LitElement {
             cursor: default;
         }
 
-        /* ── Response area ── */
+        /* ── Response area (glass card) ── */
 
         .response-container {
             flex: 1;
             overflow-y: auto;
             font-size: var(--response-font-size, 15px);
             line-height: var(--line-height);
-            background: var(--bg-app);
-            padding: var(--space-sm) var(--space-md);
+            background: var(--bg-surface);
+            backdrop-filter: blur(18px) saturate(1.15);
+            -webkit-backdrop-filter: blur(18px) saturate(1.15);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+            padding: var(--space-md) var(--space-md);
             scroll-behavior: smooth;
             user-select: text;
             cursor: text;
@@ -115,6 +123,161 @@ export class AssistantView extends LitElement {
         .response-container pre code {
             background: none;
             padding: 0;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+        }
+
+        .copy-code-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            line-height: 1;
+            color: var(--text-secondary);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+            z-index: 2;
+        }
+
+        .code-block-wrapper:hover .copy-code-btn {
+            opacity: 1;
+        }
+
+        .copy-code-btn:hover {
+            color: var(--text-primary);
+            border-color: var(--border-strong);
+        }
+
+        .copy-code-btn.copied {
+            opacity: 1;
+            color: var(--success-color);
+            border-color: var(--success-color);
+        }
+
+        .copy-code-btn svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .live-transcript {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            flex-shrink: 0;
+            padding: 9px 14px;
+            background: var(--bg-surface);
+            backdrop-filter: blur(18px) saturate(1.15);
+            -webkit-backdrop-filter: blur(18px) saturate(1.15);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.24);
+            max-height: 4.8em;
+            overflow-y: auto;
+        }
+
+        .live-transcript-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+            font-size: 0.66rem;
+            font-weight: var(--font-weight-semibold);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            padding-top: 2px;
+        }
+
+        .live-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+            animation: live-pulse 1.4s ease-in-out infinite;
+        }
+
+        @keyframes live-pulse {
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.3;
+                transform: scale(0.82);
+            }
+        }
+
+        .live-transcript-text {
+            font-size: 0.88rem;
+            line-height: 1.45;
+            color: var(--text-secondary);
+        }
+
+        /* Idle state: muted dot + placeholder text */
+        .live-transcript.waiting .live-transcript-label,
+        .live-transcript.waiting .live-dot {
+            color: var(--text-muted);
+            background: var(--text-muted);
+            box-shadow: none;
+            animation: none;
+        }
+
+        .live-transcript.waiting .live-transcript-label {
+            background: none;
+        }
+
+        .live-transcript.waiting .live-transcript-text {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* Progress banner shown while an answer is being generated (Analyze / Chat) */
+        .answer-progress {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            flex-shrink: 0;
+            padding: 9px 14px;
+            background: var(--accent-soft);
+            border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+            border-radius: 12px;
+            font-size: 0.84rem;
+            color: var(--text-primary);
+        }
+
+        .answer-progress-q {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .answer-spinner {
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+            border: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: answer-spin 0.7s linear infinite;
+        }
+
+        @keyframes answer-spin {
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .response-container a {
@@ -315,19 +478,24 @@ export class AssistantView extends LitElement {
     static properties = {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
+        liveTranscript: { type: String },
         selectedProfile: { type: String },
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         isAnalyzing: { type: Boolean, state: true },
+        _pendingQuestion: { type: String, state: true },
     };
 
     constructor() {
         super();
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.liveTranscript = '';
         this.selectedProfile = 'interview';
         this.onSendText = () => {};
         this.isAnalyzing = false;
+        this._pendingQuestion = ''; // chat question awaiting an answer (for the progress banner)
+        this._pendingCountStart = 0;
         this._animFrame = null;
     }
 
@@ -472,6 +640,9 @@ export class AssistantView extends LitElement {
         if (textInput && textInput.value.trim()) {
             const message = textInput.value.trim();
             textInput.value = '';
+            // Show the question in a progress banner so it's clear what the next answer responds to.
+            this._pendingQuestion = message;
+            this._pendingCountStart = this.responses.length;
             await this.onSendText(message);
         }
     }
@@ -662,6 +833,19 @@ export class AssistantView extends LitElement {
                 this.isAnalyzing = false;
             }
         }
+
+        // Clear the chat "You asked…" banner once its answer has started streaming in.
+        if (changedProperties.has('responses') && this._pendingQuestion) {
+            if (this.responses.length > this._pendingCountStart) {
+                this._pendingQuestion = '';
+            }
+        }
+
+        // Keep the running conversation transcript scrolled to the latest words.
+        if (changedProperties.has('liveTranscript')) {
+            const tb = this.shadowRoot.querySelector('.live-transcript');
+            if (tb) tb.scrollTop = tb.scrollHeight;
+        }
     }
 
     updateResponseContent() {
@@ -670,16 +854,93 @@ export class AssistantView extends LitElement {
             const currentResponse = this.getCurrentResponse();
             const renderedResponse = this.renderMarkdown(currentResponse);
             container.innerHTML = renderedResponse;
+            this.addCopyButtonsToCodeBlocks(container);
             if (this.shouldAnimateResponse) {
                 this.dispatchEvent(new CustomEvent('response-animation-complete', { bubbles: true, composed: true }));
             }
         }
     }
 
+    addCopyButtonsToCodeBlocks(container) {
+        const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+
+        container.querySelectorAll('pre').forEach(pre => {
+            // Skip if already wrapped (e.g. on streaming re-render)
+            if (pre.parentElement?.classList.contains('code-block-wrapper')) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'code-block-wrapper';
+            pre.parentNode.insertBefore(wrapper, pre);
+            wrapper.appendChild(pre);
+
+            const btn = document.createElement('button');
+            btn.className = 'copy-code-btn';
+            btn.type = 'button';
+            btn.innerHTML = `${copyIcon}<span>Copy</span>`;
+
+            btn.addEventListener('click', async () => {
+                const code = (pre.querySelector('code') || pre).innerText;
+                try {
+                    await navigator.clipboard.writeText(code);
+                } catch (err) {
+                    // Fallback for environments without async clipboard access
+                    const textarea = document.createElement('textarea');
+                    textarea.value = code;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                }
+
+                btn.classList.add('copied');
+                btn.querySelector('span').textContent = 'Copied!';
+                clearTimeout(btn._copyTimer);
+                btn._copyTimer = setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.querySelector('span').textContent = 'Copy';
+                }, 1500);
+            });
+
+            wrapper.appendChild(btn);
+        });
+    }
+
+    // Called by the parent toolbar's "Chat" action to focus the message input.
+    focusChat() {
+        this.shadowRoot.querySelector('#textInput')?.focus();
+    }
+
     render() {
         const hasMultipleResponses = this.responses.length > 1;
+        const transcript = (this.liveTranscript || '').trim();
 
         return html`
+            <div class="live-transcript ${transcript ? '' : 'waiting'}" title="What the interviewer is saying (live)">
+                <span class="live-transcript-label">
+                    <span class="live-dot"></span>
+                    Live
+                </span>
+                <span class="live-transcript-text">${transcript || 'Waiting for speech…'}</span>
+            </div>
+
+            ${this.isAnalyzing
+                ? html`
+                      <div class="answer-progress">
+                          <span class="answer-spinner"></span>
+                          <span>Analyzing your screen…</span>
+                      </div>
+                  `
+                : this._pendingQuestion
+                  ? html`
+                          <div class="answer-progress">
+                              <span class="answer-spinner"></span>
+                              <span class="answer-progress-q">Answering: ${this._pendingQuestion}</span>
+                          </div>
+                      `
+                  : ''}
+
             <div class="response-container" id="responseContainer"></div>
 
             ${hasMultipleResponses

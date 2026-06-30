@@ -269,8 +269,12 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
     sendToRenderer('session-initializing', true);
 
     try {
-        // Setup system prompt
-        currentSystemPrompt = getSystemPrompt(profile, customPrompt, false);
+        // Setup system prompt (honor answer-style preferences)
+        const stylePrefs = require('../storage').getPreferences();
+        currentSystemPrompt = getSystemPrompt(profile, customPrompt, false, {
+            answerFormat: stylePrefs.answerFormat,
+            desiMode: stylePrefs.desiMode,
+        });
 
         // Initialize Ollama client
         ollamaClient = new Ollama({ host: ollamaHost });
@@ -315,6 +319,33 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
         console.error('[LocalAI] Initialization error:', error);
         sendToRenderer('session-initializing', false);
         sendToRenderer('update-status', 'Local AI error: ' + error.message);
+        return false;
+    }
+}
+
+async function initializeOllamaOnly(ollamaHost, model) {
+    console.log('[LocalAI] Initializing Ollama-only session:', { ollamaHost, model });
+
+    try {
+        // Initialize Ollama client
+        ollamaClient = new Ollama({ host: ollamaHost });
+        ollamaModel = model;
+
+        // Test Ollama connection
+        try {
+            await ollamaClient.list();
+            console.log('[LocalAI] Ollama connection verified');
+        } catch (error) {
+            console.error('[LocalAI] Cannot connect to Ollama at', ollamaHost, ':', error.message);
+            return false;
+        }
+
+        localConversationHistory = [];
+        isLocalActive = true;
+        console.log('[LocalAI] Ollama-only session initialized');
+        return true;
+    } catch (error) {
+        console.error('[LocalAI] Ollama-only initialization error:', error);
         return false;
     }
 }
@@ -426,6 +457,7 @@ async function sendLocalImage(base64Data, prompt) {
 
 module.exports = {
     initializeLocalSession,
+    initializeOllamaOnly,
     processLocalAudio,
     closeLocalSession,
     isLocalSessionActive,

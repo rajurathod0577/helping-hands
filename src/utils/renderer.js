@@ -56,6 +56,37 @@ const storage = {
     async setGroqApiKey(groqApiKey) {
         return ipcRenderer.invoke('storage:set-groq-api-key', groqApiKey);
     },
+    async getOpenRouterApiKey() {
+        const result = await ipcRenderer.invoke('storage:get-openrouter-api-key');
+        return result.success ? result.data : '';
+    },
+    async setOpenRouterApiKey(openrouterApiKey) {
+        return ipcRenderer.invoke('storage:set-openrouter-api-key', openrouterApiKey);
+    },
+    async fetchOpenRouterModels() {
+        const apiKey = await storage.getOpenRouterApiKey();
+        if (!apiKey) return { success: false, error: 'No OpenRouter API key configured' };
+        return ipcRenderer.invoke('openrouter-fetch-models', apiKey);
+    },
+    async testOpenRouterModel(modelId) {
+        const apiKey = await storage.getOpenRouterApiKey();
+        if (!apiKey) return { success: false, error: 'No OpenRouter API key configured' };
+        return ipcRenderer.invoke('openrouter-test-model', apiKey, modelId);
+    },
+    async getDeepSeekApiKey() {
+        const result = await ipcRenderer.invoke('storage:get-deepseek-api-key');
+        return result.success ? result.data : '';
+    },
+    async setDeepSeekApiKey(deepseekApiKey) {
+        return ipcRenderer.invoke('storage:set-deepseek-api-key', deepseekApiKey);
+    },
+    async getSpeechmaticsApiKey() {
+        const result = await ipcRenderer.invoke('storage:get-speechmatics-api-key');
+        return result.success ? result.data : '';
+    },
+    async setSpeechmaticsApiKey(speechmaticsApiKey) {
+        return ipcRenderer.invoke('storage:set-speechmatics-api-key', speechmaticsApiKey);
+    },
 
     // Preferences
     async getPreferences() {
@@ -186,6 +217,39 @@ async function initializeCloud(profile = 'interview') {
     } else {
         helpingHands.setStatus('error');
         return false;
+    }
+}
+
+async function initializeSpeechmatics(profile = 'interview', language = 'en-US') {
+    const apiKey = await storage.getSpeechmaticsApiKey();
+    if (!apiKey) {
+        helpingHands.setStatus('error');
+        return false;
+    }
+
+    const prefs = await storage.getPreferences();
+    const success = await ipcRenderer.invoke('initialize-speechmatics', apiKey, profile, language, prefs.customPrompt || '');
+    if (success) {
+        helpingHands.setStatus('Live');
+        return true;
+    } else {
+        helpingHands.setStatus('error');
+        return false;
+    }
+}
+
+async function initializeWithProviderConfig(profile = 'interview', language = 'en-US') {
+    const prefs = await storage.getPreferences();
+    const providerConfig = prefs.providerConfig || { audio: 'gemini', text: 'groq', image: 'gemini' };
+
+    // Route based on audio provider
+    if (providerConfig.audio === 'whisper-local') {
+        return await initializeLocal(profile);
+    } else if (providerConfig.audio === 'speechmatics') {
+        return await initializeSpeechmatics(profile, language);
+    } else {
+        // Default: use Gemini for audio
+        return await initializeGemini(profile, language);
     }
 }
 
@@ -789,32 +853,32 @@ const helpingHandsApp = document.querySelector('helping-hands-app');
 const theme = {
     themes: {
         dark: {
-            background: '#101010',
-            text: '#e0e0e0',
-            textSecondary: '#a0a0a0',
-            textMuted: '#6b6b6b',
-            border: '#2a2a2a',
-            accent: '#ffffff',
-            btnPrimaryBg: '#ffffff',
-            btnPrimaryText: '#000000',
-            btnPrimaryHover: '#e0e0e0',
-            tooltipBg: '#1a1a1a',
-            tooltipText: '#ffffff',
-            keyBg: 'rgba(255,255,255,0.1)',
+            background: '#0b0b0f',
+            text: '#f4f4f7',
+            textSecondary: '#a1a1ad',
+            textMuted: '#5c5c68',
+            border: 'rgba(255,255,255,0.08)', // → --border (subtle)
+            accent: 'rgba(255,255,255,0.16)', // → --border-strong (neutral, NOT the brand color)
+            btnPrimaryBg: '#6d5ef8', // → --accent (brand violet)
+            btnPrimaryText: '#ffffff',
+            btnPrimaryHover: '#7c6cff',
+            tooltipBg: '#1b1b22',
+            tooltipText: '#f4f4f7',
+            keyBg: 'rgba(109,94,248,0.16)',
         },
         light: {
             background: '#ffffff',
-            text: '#1a1a1a',
-            textSecondary: '#555555',
-            textMuted: '#888888',
-            border: '#e0e0e0',
-            accent: '#000000',
-            btnPrimaryBg: '#1a1a1a',
+            text: '#16161d',
+            textSecondary: '#5b5b66',
+            textMuted: '#9292a0',
+            border: 'rgba(0,0,0,0.10)',
+            accent: 'rgba(0,0,0,0.16)',
+            btnPrimaryBg: '#6d5ef8',
             btnPrimaryText: '#ffffff',
-            btnPrimaryHover: '#333333',
-            tooltipBg: '#1a1a1a',
+            btnPrimaryHover: '#5b4fe0',
+            tooltipBg: '#16161d',
             tooltipText: '#ffffff',
-            keyBg: 'rgba(0,0,0,0.1)',
+            keyBg: 'rgba(109,94,248,0.12)',
         },
         midnight: {
             background: '#0d1117',
@@ -1085,6 +1149,8 @@ const helpingHands = {
     initializeGemini,
     initializeCloud,
     initializeLocal,
+    initializeSpeechmatics,
+    initializeWithProviderConfig,
     startCapture,
     stopCapture,
     sendTextMessage,

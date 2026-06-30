@@ -2,8 +2,19 @@ const { GoogleGenAI, Modality } = require('@google/genai');
 const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
-const { getSystemPrompt } = require('./prompts');
-const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, incrementCharUsage, getModelForToday } = require('../storage');
+const { getSystemPrompt, buildAnswerModifiers } = require('./prompts');
+const {
+    getAvailableModel,
+    incrementLimitCount,
+    getApiKey,
+    getGroqApiKey,
+    getOpenRouterApiKey,
+    getDeepSeekApiKey,
+    incrementCharUsage,
+    getModelForToday,
+    getProviderConfig,
+    getPreferences,
+} = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
@@ -11,6 +22,13 @@ let _localai = null;
 function getLocalAi() {
     if (!_localai) _localai = require('./localai');
     return _localai;
+}
+
+// Lazy-loaded to avoid circular dependency (speechmatics.js imports from gemini.js)
+let _speechmatics = null;
+function getSpeechmatics() {
+    if (!_speechmatics) _speechmatics = require('./speechmatics');
+    return _speechmatics;
 }
 
 // Provider mode: 'byok', 'cloud', or 'local'
@@ -220,7 +238,16 @@ function trimConversationHistoryForGemma(history, maxChars = 42000) {
 }
 
 function stripThinkingTags(text) {
-    return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    return (
+        text
+            // Completed reasoning blocks (qwen3 etc.)
+            .replace(/<think>[\s\S]*?<\/think>/gi, '')
+            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+            // Unterminated reasoning still streaming in (no closing tag yet) — hide it so the
+            // raw "<think>…" reasoning never flashes on screen before the answer arrives.
+            .replace(/<think(?:ing)?>[\s\S]*$/i, '')
+            .trim()
+    );
 }
 
 async function sendToGroq(transcription) {
@@ -419,6 +446,236 @@ async function sendToGemma(transcription) {
     }
 }
 
+async function sendToOpenRouter(transcription, model) {
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) {
+        console.log('No OpenRouter API key configured, skipping OpenRouter response');
+        return;
+    }
+
+    if (!transcription || transcription.trim() === '') {
+        console.log('Empty transcription, skipping OpenRouter');
+        return;
+    }
+
+    const modelToUse = model || 'meta-llama/llama-3.3-70b-instruct';
+    console.log(`Sending to OpenRouter (${modelToUse}):`, transcription.substring(0, 100) + '...');
+
+    groqConversationHistory.push({
+        role: 'user',
+        content: transcription.trim(),
+    });
+
+    if (groqConversationHistory.length > 20) {
+        groqConversationHistory = groqConversationHistory.slice(-20);
+    }
+
+    try {
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://helping-hands.app',
+                'X-Title': 'Helping Hands',
+            },
+            body: JSON.stringify({
+                model: modelToUse,
+                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
+                stream: true,
+                temperature: 0.7,
+                max_tokens: 1024,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('OpenRouter API error:', response.status, errorText);
+            sendToRenderer('update-status', `OpenRouter error: ${response.status}`);
+            return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        let isFirst = true;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullText += token;
+                            const displayText = stripThinkingTags(fullText);
+                            if (displayText) {
+                                sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
+                                isFirst = false;
+                            }
+                        }
+                    } catch (parseError) {
+                        // Skip invalid JSON chunks
+                    }
+                }
+            }
+        }
+
+        const cleanedResponse = stripThinkingTags(fullText);
+
+        if (cleanedResponse) {
+            groqConversationHistory.push({
+                role: 'assistant',
+                content: cleanedResponse,
+            });
+
+            saveConversationTurn(transcription, cleanedResponse);
+        }
+
+        console.log(`OpenRouter response completed (${modelToUse})`);
+        sendToRenderer('update-status', 'Listening...');
+    } catch (error) {
+        console.error('Error calling OpenRouter API:', error);
+        sendToRenderer('update-status', 'OpenRouter error: ' + error.message);
+    }
+}
+
+async function sendToDeepSeek(transcription) {
+    const apiKey = getDeepSeekApiKey();
+    if (!apiKey) {
+        console.log('No DeepSeek API key configured, skipping DeepSeek response');
+        return;
+    }
+
+    if (!transcription || transcription.trim() === '') {
+        console.log('Empty transcription, skipping DeepSeek');
+        return;
+    }
+
+    const modelToUse = 'deepseek-chat';
+    console.log(`Sending to DeepSeek (${modelToUse}):`, transcription.substring(0, 100) + '...');
+
+    groqConversationHistory.push({
+        role: 'user',
+        content: transcription.trim(),
+    });
+
+    if (groqConversationHistory.length > 20) {
+        groqConversationHistory = groqConversationHistory.slice(-20);
+    }
+
+    try {
+        const response = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: modelToUse,
+                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
+                stream: true,
+                temperature: 0.7,
+                max_tokens: 1024,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('DeepSeek API error:', response.status, errorText);
+            sendToRenderer('update-status', `DeepSeek error: ${response.status}`);
+            return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        let isFirst = true;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullText += token;
+                            const displayText = stripThinkingTags(fullText);
+                            if (displayText) {
+                                sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
+                                isFirst = false;
+                            }
+                        }
+                    } catch (parseError) {
+                        // Skip invalid JSON chunks
+                    }
+                }
+            }
+        }
+
+        const cleanedResponse = stripThinkingTags(fullText);
+
+        if (cleanedResponse) {
+            groqConversationHistory.push({
+                role: 'assistant',
+                content: cleanedResponse,
+            });
+
+            saveConversationTurn(transcription, cleanedResponse);
+        }
+
+        console.log(`DeepSeek response completed (${modelToUse})`);
+        sendToRenderer('update-status', 'Listening...');
+    } catch (error) {
+        console.error('Error calling DeepSeek API:', error);
+        sendToRenderer('update-status', 'DeepSeek error: ' + error.message);
+    }
+}
+
+// Route a finished transcript to the configured text provider to generate an answer.
+// Shared by the Gemini Live path (on generationComplete) and the Speechmatics path
+// (on end-of-utterance) so answer generation behaves identically regardless of how
+// the audio was transcribed.
+function triggerAnswerGeneration(transcript) {
+    if (!transcript || transcript.trim() === '') return;
+
+    const providerConfig = getProviderConfig();
+    const textProvider = providerConfig.text || 'groq';
+
+    if (textProvider === 'openrouter') {
+        const prefs = getPreferences();
+        sendToOpenRouter(transcript, prefs.openrouterTextModel);
+    } else if (textProvider === 'deepseek') {
+        sendToDeepSeek(transcript);
+    } else if (textProvider === 'ollama') {
+        getLocalAi().sendLocalText(transcript);
+    } else if (textProvider === 'gemini') {
+        sendToGemma(transcript);
+    } else if (hasGroqKey()) {
+        sendToGroq(transcript);
+    } else {
+        sendToGemma(transcript);
+    }
+}
+
 async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US', isReconnect = false) {
     if (isInitializingSession) {
         console.log('Session initialization already in progress');
@@ -446,12 +703,25 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     const enabledTools = await getEnabledTools();
     const googleSearchEnabled = enabledTools.some(tool => tool.googleSearch);
 
-    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled);
+    const stylePrefs = getPreferences();
+    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, {
+        answerFormat: stylePrefs.answerFormat,
+        desiMode: stylePrefs.desiMode,
+    });
     currentSystemPrompt = systemPrompt; // Store for Groq
 
     // Initialize new conversation session only on first connect
     if (!isReconnect) {
         initializeNewSession(profile, customPrompt);
+    }
+
+    // If text or image provider is Ollama, initialize Ollama client
+    const providerConfig = getProviderConfig();
+    if (providerConfig.text === 'ollama' || providerConfig.image === 'ollama') {
+        const prefs = require('../storage').getPreferences();
+        const ollamaHost = prefs.ollamaHost || 'http://127.0.0.1:11434';
+        const ollamaModel = prefs.ollamaModel || 'llama3.1';
+        await getLocalAi().initializeOllamaOnly(ollamaHost, ollamaModel);
     }
 
     try {
@@ -467,10 +737,12 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                     // Handle input transcription (what was spoken)
                     if (message.serverContent?.inputTranscription?.results) {
                         currentTranscription += formatSpeakerResults(message.serverContent.inputTranscription.results);
+                        sendToRenderer('update-transcript', currentTranscription);
                     } else if (message.serverContent?.inputTranscription?.text) {
                         const text = message.serverContent.inputTranscription.text;
                         if (text.trim() !== '') {
                             currentTranscription += text;
+                            sendToRenderer('update-transcript', currentTranscription);
                         }
                     }
 
@@ -479,11 +751,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                     if (message.serverContent?.generationComplete) {
                         if (currentTranscription.trim() !== '') {
-                            if (hasGroqKey()) {
-                                sendToGroq(currentTranscription);
-                            } else {
-                                sendToGemma(currentTranscription);
-                            }
+                            triggerAnswerGeneration(currentTranscription);
                             currentTranscription = '';
                         }
                         messageBuffer = '';
@@ -698,6 +966,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                 sendCloudAudio(monoChunk);
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(monoChunk);
+            } else if (currentProviderMode === 'speechmatics') {
+                getSpeechmatics().sendAudio(monoChunk.toString('base64'));
             } else {
                 const base64Data = monoChunk.toString('base64');
                 sendAudioToGemini(base64Data, geminiSessionRef);
@@ -768,58 +1038,272 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
     }
 }
 
-async function sendImageToGeminiHttp(base64Data, prompt) {
-    // Get available model based on rate limits
-    const model = getAvailableModel();
+// Errors Google returns transiently when a model is overloaded/rate-limited.
+// These are worth retrying (and falling back to another model) rather than
+// surfacing straight to the user.
+function isTransientGeminiError(error) {
+    const status = error?.status || error?.code;
+    if (status === 503 || status === 429 || status === 500) return true;
+    const msg = String(error?.message || '');
+    return /503|UNAVAILABLE|overloaded|high demand|rate limit|RESOURCE_EXHAUSTED|try again later/i.test(
+        msg
+    );
+}
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function sendImageToGeminiHttp(base64Data, prompt) {
     const apiKey = getApiKey();
     if (!apiKey) {
         return { success: false, error: 'No API key configured' };
     }
 
-    try {
-        const ai = new GoogleGenAI({ apiKey: apiKey });
-
-        const contents = [
-            {
-                inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: base64Data,
-                },
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+    const contents = [
+        {
+            inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64Data,
             },
-            { text: prompt },
-        ];
+        },
+        { text: prompt },
+    ];
 
-        console.log(`Sending image to ${model} (streaming)...`);
-        const response = await ai.models.generateContentStream({
-            model: model,
-            contents: contents,
+    // Pick the rate-limit-aware model first, then fall back to the alternate
+    // Flash variant if the primary keeps coming back overloaded.
+    const primaryModel = getAvailableModel();
+    const fallbackModel =
+        primaryModel === 'gemini-2.5-flash' ? 'gemini-2.5-flash-lite' : 'gemini-2.5-flash';
+    const modelsToTry = [primaryModel, fallbackModel];
+
+    const MAX_ATTEMPTS = 3;
+    let lastError = null;
+
+    for (const model of modelsToTry) {
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                console.log(
+                    `Sending image to ${model} (streaming, attempt ${attempt}/${MAX_ATTEMPTS})...`
+                );
+                const response = await ai.models.generateContentStream({
+                    model: model,
+                    contents: contents,
+                });
+
+                // Increment count after successful call
+                incrementLimitCount(model);
+
+                // Stream the response
+                let fullText = '';
+                let isFirst = true;
+                for await (const chunk of response) {
+                    const chunkText = chunk.text;
+                    if (chunkText) {
+                        fullText += chunkText;
+                        // Send to renderer - new response for first chunk, update for subsequent
+                        sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
+                        isFirst = false;
+                    }
+                }
+
+                console.log(`Image response completed from ${model}`);
+
+                // Save screen analysis to history
+                saveScreenAnalysis(prompt, fullText, model);
+
+                return { success: true, text: fullText, model: model };
+            } catch (error) {
+                lastError = error;
+
+                if (!isTransientGeminiError(error)) {
+                    // Permanent error (bad key, invalid request, etc.) - don't retry.
+                    console.error('Error sending image to Gemini HTTP:', error);
+                    return { success: false, error: error.message };
+                }
+
+                const moreAttempts = attempt < MAX_ATTEMPTS;
+                console.warn(
+                    `Gemini ${model} overloaded (transient). ${
+                        moreAttempts ? 'Retrying' : 'Giving up on this model'
+                    }...`
+                );
+                if (moreAttempts) {
+                    // Exponential backoff: 1s, 2s
+                    await sleep(1000 * attempt);
+                }
+            }
+        }
+    }
+
+    console.error('Error sending image to Gemini HTTP (all retries exhausted):', lastError);
+    return {
+        success: false,
+        error: 'Gemini is overloaded right now. Please try analyzing the screen again in a moment.',
+    };
+}
+
+async function sendImageToOpenRouter(base64Data, prompt, model) {
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) {
+        return { success: false, error: 'No OpenRouter API key configured' };
+    }
+
+    const modelToUse = model || 'meta-llama/llama-3.3-70b-instruct';
+
+    try {
+        console.log(`Sending image to OpenRouter (${modelToUse})...`);
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://helping-hands.app',
+                'X-Title': 'Helping Hands',
+            },
+            body: JSON.stringify({
+                model: modelToUse,
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: prompt },
+                            {
+                                type: 'image_url',
+                                image_url: { url: `data:image/jpeg;base64,${base64Data}` },
+                            },
+                        ],
+                    },
+                ],
+                stream: true,
+                max_tokens: 1024,
+            }),
         });
 
-        // Increment count after successful call
-        incrementLimitCount(model);
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('OpenRouter image API error:', response.status, errorText);
+            return { success: false, error: `OpenRouter error: ${response.status}` };
+        }
 
-        // Stream the response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
         let fullText = '';
         let isFirst = true;
-        for await (const chunk of response) {
-            const chunkText = chunk.text;
-            if (chunkText) {
-                fullText += chunkText;
-                // Send to renderer - new response for first chunk, update for subsequent
-                sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
-                isFirst = false;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullText += token;
+                            sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
+                            isFirst = false;
+                        }
+                    } catch (parseError) {
+                        // Skip invalid JSON chunks
+                    }
+                }
             }
         }
 
-        console.log(`Image response completed from ${model}`);
-
-        // Save screen analysis to history
-        saveScreenAnalysis(prompt, fullText, model);
-
-        return { success: true, text: fullText, model: model };
+        console.log(`OpenRouter image response completed (${modelToUse})`);
+        saveScreenAnalysis(prompt, fullText, `openrouter/${modelToUse}`);
+        return { success: true, text: fullText, model: `openrouter/${modelToUse}` };
     } catch (error) {
-        console.error('Error sending image to Gemini HTTP:', error);
+        console.error('Error sending image to OpenRouter:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function sendImageToDeepSeek(base64Data, prompt) {
+    const apiKey = getDeepSeekApiKey();
+    if (!apiKey) {
+        return { success: false, error: 'No DeepSeek API key configured' };
+    }
+
+    const modelToUse = 'deepseek-chat';
+
+    try {
+        console.log(`Sending image to DeepSeek (${modelToUse})...`);
+        const response = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: modelToUse,
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: prompt },
+                            {
+                                type: 'image_url',
+                                image_url: { url: `data:image/jpeg;base64,${base64Data}` },
+                            },
+                        ],
+                    },
+                ],
+                stream: true,
+                max_tokens: 1024,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('DeepSeek image API error:', response.status, errorText);
+            return { success: false, error: `DeepSeek error: ${response.status}` };
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        let isFirst = true;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullText += token;
+                            sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
+                            isFirst = false;
+                        }
+                    } catch (parseError) {
+                        // Skip invalid JSON chunks
+                    }
+                }
+            }
+        }
+
+        console.log(`DeepSeek image response completed (${modelToUse})`);
+        saveScreenAnalysis(prompt, fullText, `deepseek/${modelToUse}`);
+        return { success: true, text: fullText, model: `deepseek/${modelToUse}` };
+    } catch (error) {
+        console.error('Error sending image to DeepSeek:', error);
         return { success: false, error: error.message };
     }
 }
@@ -866,6 +1350,36 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         return success;
     });
 
+    ipcMain.handle('initialize-speechmatics', async (event, apiKey, profile = 'interview', language = 'en-US', customPrompt = '') => {
+        currentProviderMode = 'speechmatics';
+        sendToRenderer('session-initializing', true);
+        // Set up a fresh conversation session so turns are tracked and saved.
+        initializeNewSession(profile, customPrompt);
+        // Speechmatics only transcribes — the answer is generated by the configured text
+        // provider (Groq/Gemma/etc.), which reads currentSystemPrompt. Set it here since
+        // the Gemini Live session (which normally sets it) is not started in this mode.
+        const smStylePrefs = getPreferences();
+        currentSystemPrompt = getSystemPrompt(profile, customPrompt, false, {
+            answerFormat: smStylePrefs.answerFormat,
+            desiMode: smStylePrefs.desiMode,
+        });
+        // If the text/image provider is Ollama, make sure its client is initialized.
+        const smProviderConfig = getProviderConfig();
+        if (smProviderConfig.text === 'ollama' || smProviderConfig.image === 'ollama') {
+            const prefs = getPreferences();
+            await getLocalAi().initializeOllamaOnly(
+                prefs.ollamaHost || 'http://127.0.0.1:11434',
+                prefs.ollamaModel || 'llama3.1'
+            );
+        }
+        const success = await getSpeechmatics().initSpeechmatics(apiKey, { language, profile, customPrompt });
+        sendToRenderer('session-initializing', false);
+        if (!success) {
+            currentProviderMode = 'byok';
+        }
+        return success;
+    });
+
     ipcMain.handle('send-audio-content', async (event, { data, mimeType }) => {
         if (currentProviderMode === 'cloud') {
             try {
@@ -886,6 +1400,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 console.error('Error sending local audio:', error);
                 return { success: false, error: error.message };
             }
+        }
+        if (currentProviderMode === 'speechmatics') {
+            getSpeechmatics().sendAudio(data);
+            return { success: true };
         }
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
@@ -922,6 +1440,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
+        if (currentProviderMode === 'speechmatics') {
+            getSpeechmatics().sendAudio(data);
+            return { success: true };
+        }
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
         try {
             process.stdout.write(',');
@@ -940,6 +1462,16 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             if (!data || typeof data !== 'string') {
                 console.error('Invalid image data received');
                 return { success: false, error: 'Invalid image data' };
+            }
+
+            // Apply the user's answer-style preferences (bullets / Desi mode) to screenshot answers too.
+            const imgPrefs = getPreferences();
+            const styleModifiers = buildAnswerModifiers({
+                answerFormat: imgPrefs.answerFormat,
+                desiMode: imgPrefs.desiMode,
+            });
+            if (styleModifiers && typeof prompt === 'string') {
+                prompt = prompt + styleModifiers;
             }
 
             const buffer = Buffer.from(data, 'base64');
@@ -964,9 +1496,21 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
-            // Use HTTP API instead of realtime session
-            const result = await sendImageToGeminiHttp(data, prompt);
-            return result;
+            // Route based on image provider config
+            const providerConfig = getProviderConfig();
+            const imageProvider = providerConfig.image || 'gemini';
+
+            if (imageProvider === 'openrouter') {
+                const prefs = getPreferences();
+                return await sendImageToOpenRouter(data, prompt, prefs.openrouterImageModel);
+            } else if (imageProvider === 'deepseek') {
+                return await sendImageToDeepSeek(data, prompt);
+            } else if (imageProvider === 'ollama') {
+                return await getLocalAi().sendLocalImage(data, prompt);
+            } else {
+                // Default: use Gemini HTTP API
+                return await sendImageToGeminiHttp(data, prompt);
+            }
         } catch (error) {
             console.error('Error sending image:', error);
             return { success: false, error: error.message };
@@ -999,12 +1543,38 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
 
+        // Speechmatics only transcribes audio — there is no live session for text. Route the
+        // typed message straight to the configured text provider (Groq/Gemma/etc.) for an answer.
+        if (currentProviderMode === 'speechmatics') {
+            try {
+                console.log('Sending text (speechmatics mode):', text);
+                triggerAnswerGeneration(text.trim());
+                return { success: true };
+            } catch (error) {
+                console.error('Error sending speechmatics text:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
 
         try {
             console.log('Sending text message:', text);
 
-            if (hasGroqKey()) {
+            // Route based on text provider config
+            const providerConfig = getProviderConfig();
+            const textProvider = providerConfig.text || 'groq';
+
+            if (textProvider === 'openrouter') {
+                const prefs = getPreferences();
+                sendToOpenRouter(text.trim(), prefs.openrouterTextModel);
+            } else if (textProvider === 'deepseek') {
+                sendToDeepSeek(text.trim());
+            } else if (textProvider === 'ollama') {
+                getLocalAi().sendLocalText(text.trim());
+            } else if (textProvider === 'gemini') {
+                sendToGemma(text.trim());
+            } else if (hasGroqKey()) {
                 sendToGroq(text.trim());
             } else {
                 sendToGemma(text.trim());
@@ -1061,6 +1631,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: true };
             }
 
+            if (currentProviderMode === 'speechmatics') {
+                await getSpeechmatics().closeSpeechmatics();
+                currentProviderMode = 'byok';
+                return { success: true };
+            }
+
             // Set flag to prevent reconnection attempts
             isUserClosing = true;
             sessionParams = null;
@@ -1098,6 +1674,27 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         }
     });
 
+    // Manually trigger an answer from whatever has been transcribed so far (toolbar "Answer").
+    // The renderer passes the transcript it is displaying (this.liveTranscript), which works for
+    // every audio provider (Gemini Live, Speechmatics, etc.); fall back to gemini's accumulator.
+    ipcMain.handle('force-answer', async (event, transcript) => {
+        try {
+            let text = (transcript || '').trim();
+            if (currentProviderMode === 'speechmatics') {
+                // Answer the LAST asked question, not the whole running conversation.
+                const sm = getSpeechmatics();
+                text = sm.getLastUtterance() || sm.getConversation() || text;
+            } else if (!text) {
+                text = currentTranscription;
+            }
+            triggerAnswerGeneration(text); // self-guards empty transcript
+            return { success: true };
+        } catch (error) {
+            console.error('Error forcing answer:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     ipcMain.handle('update-google-search-setting', async (event, enabled) => {
         try {
             console.log('Google Search setting updated to:', enabled);
@@ -1127,4 +1724,5 @@ module.exports = {
     sendImageToGeminiHttp,
     setupGeminiIpcHandlers,
     formatSpeakerResults,
+    triggerAnswerGeneration,
 };

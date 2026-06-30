@@ -3,6 +3,28 @@ const path = require('node:path');
 const storage = require('../storage');
 
 let mouseEventsIgnored = false;
+let overlayHidden = false;
+
+// Show/hide the overlay via opacity rather than BrowserWindow.hide(). On macOS, hide()/show()
+// on a transparent always-on-top overlay can re-mount the renderer (resetting it to the home
+// view and tearing down the live session). Toggling opacity keeps the window, renderer state,
+// and live session fully intact — only visibility changes.
+function applyOverlayVisibility(mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (overlayHidden) {
+        mainWindow.setIgnoreMouseEvents(true, { forward: true });
+        mainWindow.setOpacity(0);
+    } else {
+        mainWindow.setOpacity(1);
+        // Restore click behaviour to whatever click-through mode was active.
+        if (mouseEventsIgnored) {
+            mainWindow.setIgnoreMouseEvents(true, { forward: true });
+        } else {
+            mainWindow.setIgnoreMouseEvents(false);
+        }
+        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    }
+}
 
 const DEFAULT_MAIN_WINDOW_SIZE = { width: 1100, height: 800 };
 const MIN_WINDOW_SIZE = { width: 700, height: 320 };
@@ -157,11 +179,9 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
     if (keybinds.toggleVisibility) {
         try {
             globalShortcut.register(keybinds.toggleVisibility, () => {
-                if (mainWindow.isVisible()) {
-                    mainWindow.hide();
-                } else {
-                    mainWindow.showInactive();
-                }
+                if (mainWindow.isDestroyed()) return;
+                overlayHidden = !overlayHidden;
+                applyOverlayVisibility(mainWindow);
             });
             console.log(`Registered toggleVisibility: ${keybinds.toggleVisibility}`);
         } catch (error) {
@@ -294,11 +314,48 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
 }
 
 function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
+    // Height of the collapsed (toolbar-only) overlay strip. Toolbar is ~46px + 8px margins.
+    const COLLAPSED_HEIGHT = 66;
+    let savedExpandedBounds = null;
+
+    const expandWindow = () => {
+        if (mainWindow.isDestroyed()) return;
+        mainWindow.setResizable(true);
+        mainWindow.setMinimumSize(MIN_WINDOW_SIZE.width, MIN_WINDOW_SIZE.height);
+        const cur = mainWindow.getBounds();
+        const target = savedExpandedBounds || { x: cur.x, y: cur.y, width: cur.width, height: DEFAULT_MAIN_WINDOW_SIZE.height };
+        mainWindow.setBounds({ x: cur.x, y: cur.y, width: target.width, height: target.height }, false);
+        savedExpandedBounds = null;
+    };
+
     ipcMain.on('view-changed', (event, view) => {
         if (!mainWindow.isDestroyed()) {
             if (view !== 'assistant') {
                 mainWindow.setIgnoreMouseEvents(false);
+                // Leaving the live view: always restore full size if we were collapsed.
+                if (savedExpandedBounds) expandWindow();
             }
+        }
+    });
+
+    // Collapse the overlay to a toolbar-only strip (or restore it). Shrinking the actual
+    // window — not just hiding content — is what removes the translucent backdrop area.
+    ipcMain.handle('set-overlay-collapsed', (event, collapsed) => {
+        if (mainWindow.isDestroyed()) return { success: false };
+        try {
+            if (collapsed) {
+                const b = mainWindow.getBounds();
+                savedExpandedBounds = { x: b.x, y: b.y, width: b.width, height: b.height };
+                mainWindow.setMinimumSize(MIN_WINDOW_SIZE.width, COLLAPSED_HEIGHT);
+                mainWindow.setResizable(false);
+                mainWindow.setBounds({ x: b.x, y: b.y, width: b.width, height: COLLAPSED_HEIGHT }, false);
+            } else {
+                expandWindow();
+            }
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting overlay collapsed:', error);
+            return { success: false, error: error.message };
         }
     });
 
@@ -319,12 +376,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
             if (mainWindow.isDestroyed()) {
                 return { success: false, error: 'Window has been destroyed' };
             }
-
-            if (mainWindow.isVisible()) {
-                mainWindow.hide();
-            } else {
-                mainWindow.showInactive();
-            }
+            overlayHidden = !overlayHidden;
+            applyOverlayVisibility(mainWindow);
             return { success: true };
         } catch (error) {
             console.error('Error toggling window visibility:', error);

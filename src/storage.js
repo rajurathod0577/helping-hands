@@ -14,11 +14,19 @@ const DEFAULT_CONFIG = {
 const DEFAULT_CREDENTIALS = {
     apiKey: '',
     groqApiKey: '',
+    openrouterApiKey: '',
+    deepseekApiKey: '',
+    speechmaticsApiKey: '',
 };
 
 const DEFAULT_PREFERENCES = {
     customPrompt: '',
     providerMode: 'byok',
+    providerConfig: {
+        audio: 'speechmatics',
+        text: 'groq',
+        image: 'gemini',
+    },
     selectedProfile: 'interview',
     selectedLanguage: 'en-US',
     selectedScreenshotInterval: '5',
@@ -31,6 +39,14 @@ const DEFAULT_PREFERENCES = {
     ollamaHost: 'http://127.0.0.1:11434',
     ollamaModel: 'llama3.1',
     whisperModel: 'Xenova/whisper-small',
+    openrouterTextModel: 'meta-llama/llama-3.3-70b-instruct',
+    openrouterImageModel: 'meta-llama/llama-3.3-70b-instruct',
+    // Speechmatics: seconds of silence before an utterance is treated as a complete turn
+    speechmaticsEouTrigger: 1.5,
+    // Answer style: 'bullets' (fast, concise, scannable) or 'detailed'
+    answerFormat: 'bullets',
+    // Desi mode: natural Indian-English phrasing in answers
+    desiMode: false,
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults
@@ -205,6 +221,30 @@ function setGroqApiKey(groqApiKey) {
     return setCredentials({ groqApiKey });
 }
 
+function getOpenRouterApiKey() {
+    return getCredentials().openrouterApiKey || '';
+}
+
+function setOpenRouterApiKey(openrouterApiKey) {
+    return setCredentials({ openrouterApiKey });
+}
+
+function getDeepSeekApiKey() {
+    return getCredentials().deepseekApiKey || '';
+}
+
+function setDeepSeekApiKey(deepseekApiKey) {
+    return setCredentials({ deepseekApiKey });
+}
+
+function getSpeechmaticsApiKey() {
+    return getCredentials().speechmaticsApiKey || '';
+}
+
+function setSpeechmaticsApiKey(speechmaticsApiKey) {
+    return setCredentials({ speechmaticsApiKey });
+}
+
 // ============ PREFERENCES ============
 
 function getPreferences() {
@@ -222,6 +262,32 @@ function updatePreference(key, value) {
     const preferences = getPreferences();
     preferences[key] = value;
     return writeJsonFile(getPreferencesPath(), preferences);
+}
+
+function getProviderConfig() {
+    const prefs = getPreferences();
+    return prefs.providerConfig || DEFAULT_PREFERENCES.providerConfig;
+}
+
+function hasApiKeyForProvider(provider) {
+    switch (provider) {
+        case 'gemini':
+            return !!getApiKey();
+        case 'groq':
+            return !!getGroqApiKey();
+        case 'openrouter':
+            return !!getOpenRouterApiKey();
+        case 'deepseek':
+            return !!getDeepSeekApiKey();
+        case 'speechmatics':
+            return !!getSpeechmaticsApiKey();
+        case 'ollama':
+            return true; // No API key needed
+        case 'whisper-local':
+            return true; // No API key needed
+        default:
+            return false;
+    }
 }
 
 // ============ KEYBINDS ============
@@ -504,11 +570,19 @@ module.exports = {
     setApiKey,
     getGroqApiKey,
     setGroqApiKey,
+    getOpenRouterApiKey,
+    setOpenRouterApiKey,
+    getDeepSeekApiKey,
+    setDeepSeekApiKey,
+    getSpeechmaticsApiKey,
+    setSpeechmaticsApiKey,
 
     // Preferences
     getPreferences,
     setPreferences,
     updatePreference,
+    getProviderConfig,
+    hasApiKeyForProvider,
 
     // Keybinds
     getKeybinds,

@@ -2,32 +2,34 @@
 <html>
     <head>
         <meta http-equiv="content-security-policy" content="script-src 'self' 'unsafe-inline'" />
-        <title>Screen and Audio Capture</title>
+        <title>Helping Hands</title>
         <style>
             :root {
                 /* Backgrounds */
-                --bg-app: #0a0a0a;
-                --bg-surface: #111111;
-                --bg-elevated: #191919;
-                --bg-hover: #1f1f1f;
+                --bg-app: #0b0b0f;
+                --bg-surface: #131318;
+                --bg-elevated: #1b1b22;
+                --bg-hover: #23232c;
 
                 /* Text */
-                --text-primary: #f5f5f5;
-                --text-secondary: #999999;
-                --text-muted: #555555;
+                --text-primary: #f4f4f7;
+                --text-secondary: #a1a1ad;
+                --text-muted: #5c5c68;
 
                 /* Borders & Lines */
-                --border: #222222;
-                --border-strong: #333333;
+                --border: rgba(255, 255, 255, 0.08);
+                --border-strong: rgba(255, 255, 255, 0.16);
 
-                /* Accent */
-                --accent: #3b82f6;
-                --accent-hover: #2563eb;
+                /* Accent — violet/indigo brand (single source of truth) */
+                --accent: #6d5ef8;
+                --accent-hover: #7c6cff;
+                --accent-soft: rgba(109, 94, 248, 0.14);
+                --accent-gradient: linear-gradient(135deg, #7c6cff, #5b8def);
 
                 /* Status */
                 --success: #22c55e;
-                --warning: #d4a017;
-                --danger: #ef4444;
+                --warning: #e0a92e;
+                --danger: #f0524b;
 
                 /* Typography */
                 --font: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -52,12 +54,20 @@
                 --space-2xl: 64px;
 
                 /* Radius */
-                --radius-sm: 4px;
-                --radius-md: 8px;
-                --radius-lg: 12px;
+                --radius-sm: 6px;
+                --radius-md: 10px;
+                --radius-lg: 14px;
+                --radius-xl: 18px;
+                --radius-pill: 999px;
+
+                /* Elevation — soft, low-spread shadows for floating glass */
+                --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.28);
+                --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
+                --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.42);
+                --shadow-accent: 0 8px 24px rgba(109, 94, 248, 0.35);
 
                 /* Transitions */
-                --transition: 150ms ease;
+                --transition: 160ms ease;
 
                 /* Sidebar */
                 --sidebar-width: 220px;
@@ -129,7 +139,7 @@
                 padding: 0;
                 height: 100%;
                 overflow: hidden;
-                border-radius: 12px;
+                border-radius: 16px;
                 background: transparent;
             }
 
@@ -149,6 +159,7 @@
                 -webkit-font-smoothing: antialiased;
                 -moz-osx-font-smoothing: grayscale;
             }
+
 
             * {
                 box-sizing: border-box;

@@ -58,6 +58,13 @@ export class CustomizeView extends LitElement {
                 user-select: none;
             }
 
+            .field-hint {
+                margin-top: var(--space-xs);
+                font-size: var(--font-size-xs);
+                color: var(--text-muted);
+                line-height: 1.4;
+            }
+
             .slider-wrap {
                 display: flex;
                 flex-direction: column;
@@ -182,6 +189,8 @@ export class CustomizeView extends LitElement {
         layoutMode: { type: String },
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
+        answerFormat: { type: String },
+        desiMode: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         theme: { type: String },
@@ -193,6 +202,16 @@ export class CustomizeView extends LitElement {
         isRestoring: { type: Boolean },
         clearStatusMessage: { type: String },
         clearStatusType: { type: String },
+        // Provider config
+        _audioProvider: { state: true },
+        _textProvider: { state: true },
+        _imageProvider: { state: true },
+        _openrouterModel: { state: true },
+        _openrouterModels: { state: true },
+        _openrouterModelsLoading: { state: true },
+        _openrouterSearch: { state: true },
+        _testResults: { state: true },
+        _testingModel: { state: true },
     };
 
     constructor() {
@@ -207,6 +226,8 @@ export class CustomizeView extends LitElement {
         this.onImageQualityChange = () => {};
         this.onLayoutModeChange = () => {};
         this.googleSearchEnabled = true;
+        this.answerFormat = 'bullets';
+        this.desiMode = false;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -216,6 +237,15 @@ export class CustomizeView extends LitElement {
         this.audioMode = 'speaker_only';
         this.customPrompt = '';
         this.theme = 'dark';
+        this._audioProvider = 'gemini';
+        this._textProvider = 'groq';
+        this._imageProvider = 'gemini';
+        this._openrouterModel = 'meta-llama/llama-3.3-70b-instruct';
+        this._openrouterModels = [];
+        this._openrouterModelsLoading = false;
+        this._openrouterSearch = '';
+        this._testResults = {};
+        this._testingModel = null;
         this._loadFromStorage();
     }
 
@@ -227,20 +257,53 @@ export class CustomizeView extends LitElement {
         try {
             const [prefs, keybinds] = await Promise.all([helpingHands.storage.getPreferences(), helpingHands.storage.getKeybinds()]);
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
+            this.answerFormat = prefs.answerFormat ?? 'bullets';
+            this.desiMode = prefs.desiMode ?? false;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
             this.customPrompt = prefs.customPrompt ?? '';
             this.theme = prefs.theme ?? 'dark';
+            const providerConfig = prefs.providerConfig || { audio: 'gemini', text: 'groq', image: 'gemini' };
+            this._audioProvider = providerConfig.audio;
+            this._textProvider = providerConfig.text;
+            this._imageProvider = providerConfig.image;
+            this._openrouterModel = prefs.openrouterTextModel || 'meta-llama/llama-3.3-70b-instruct';
             if (keybinds) {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...keybinds };
             }
             this.updateBackgroundAppearance();
             this.updateFontSize();
             this.requestUpdate();
+            if (this._textProvider === 'openrouter' || this._imageProvider === 'openrouter') {
+                this._fetchOpenRouterModels();
+            }
         } catch (error) {
             console.error('Error loading settings:', error);
         }
+    }
+
+    async _fetchOpenRouterModels() {
+        if (this._openrouterModelsLoading || this._openrouterModels.length > 0) return;
+        this._openrouterModelsLoading = true;
+        this.requestUpdate();
+        try {
+            const result = await helpingHands.storage.fetchOpenRouterModels();
+            if (result.success && result.data) {
+                this._openrouterModels = result.data;
+            }
+        } catch (error) {
+            console.error('Error fetching OpenRouter models:', error);
+        } finally {
+            this._openrouterModelsLoading = false;
+            this.requestUpdate();
+        }
+    }
+
+    _filterModels(searchQuery) {
+        if (!searchQuery || !searchQuery.trim()) return this._openrouterModels.slice(0, 20);
+        const q = searchQuery.toLowerCase();
+        return this._openrouterModels.filter(m => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))).slice(0, 20);
     }
 
     getProfiles() {
@@ -382,6 +445,18 @@ export class CustomizeView extends LitElement {
         this.requestUpdate();
     }
 
+    async handleAnswerFormatChange(e) {
+        this.answerFormat = e.target.value;
+        await helpingHands.storage.updatePreference('answerFormat', this.answerFormat);
+        this.requestUpdate();
+    }
+
+    async handleDesiModeChange(e) {
+        this.desiMode = e.target.checked;
+        await helpingHands.storage.updatePreference('desiMode', this.desiMode);
+        this.requestUpdate();
+    }
+
     async handleBackgroundTransparencyChange(e) {
         this.backgroundTransparency = parseFloat(e.target.value);
         await helpingHands.storage.updatePreference('backgroundTransparency', this.backgroundTransparency);
@@ -459,6 +534,55 @@ export class CustomizeView extends LitElement {
         this.handleKeybindChange(action, keybind);
         e.target.value = keybind;
         e.target.blur();
+    }
+
+    async handleProviderChange(task, e) {
+        const value = e.target.value;
+        if (task === 'audio') this._audioProvider = value;
+        if (task === 'text') this._textProvider = value;
+        if (task === 'image') this._imageProvider = value;
+
+        await helpingHands.storage.updatePreference('providerConfig', {
+            audio: this._audioProvider,
+            text: this._textProvider,
+            image: this._imageProvider,
+        });
+        await helpingHands.storage.updatePreference('openrouterTextModel', this._openrouterModel);
+        await helpingHands.storage.updatePreference('openrouterImageModel', this._openrouterModel);
+        if (this._textProvider === 'openrouter' || this._imageProvider === 'openrouter') {
+            this._fetchOpenRouterModels();
+        }
+        this.requestUpdate();
+    }
+
+    async handleOpenRouterModelSelect(modelId) {
+        this._openrouterModel = modelId;
+        await helpingHands.storage.updatePreference('openrouterTextModel', modelId);
+        await helpingHands.storage.updatePreference('openrouterImageModel', modelId);
+    }
+
+    handleOpenRouterSearch(e) {
+        this._openrouterSearch = e.target.value;
+        this.requestUpdate();
+    }
+
+    async testOpenRouterModel(modelId) {
+        this._testingModel = modelId;
+        this._testResults = { ...this._testResults, [modelId]: { status: 'testing' } };
+        this.requestUpdate();
+        try {
+            const result = await helpingHands.storage.testOpenRouterModel(modelId);
+            if (result.success) {
+                this._testResults = { ...this._testResults, [modelId]: { status: 'success', reply: result.reply } };
+            } else {
+                this._testResults = { ...this._testResults, [modelId]: { status: 'error', error: result.error } };
+            }
+        } catch (error) {
+            this._testResults = { ...this._testResults, [modelId]: { status: 'error', error: error.message } };
+        } finally {
+            this._testingModel = null;
+            this.requestUpdate();
+        }
     }
 
     async resetKeybinds() {
@@ -596,6 +720,37 @@ export class CustomizeView extends LitElement {
         `;
     }
 
+    renderAnswerStyleSection() {
+        return html`
+            <section class="surface">
+                <div class="surface-title">Answer Style</div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Response Format</label>
+                        <select class="control" .value=${this.answerFormat} @change=${this.handleAnswerFormatChange}>
+                            <option value="bullets">Concise bullet points (fast)</option>
+                            <option value="detailed">Detailed explanations</option>
+                        </select>
+                        <div class="field-hint">Bullets give short, scannable answers you can read at a glance during a live call.</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Desi Mode</label>
+                        <label class="toggle-row">
+                            <input
+                                class="toggle-input"
+                                type="checkbox"
+                                .checked=${this.desiMode}
+                                @change=${this.handleDesiModeChange}
+                            />
+                            <span class="toggle-label">Natural Indian-English phrasing</span>
+                        </label>
+                        <div class="field-hint">Answers sound like a confident Indian candidate speaking — not textbook English.</div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
     renderLanguageSection() {
         return html`
             <section class="surface">
@@ -685,6 +840,144 @@ export class CustomizeView extends LitElement {
         `;
     }
 
+    renderProviderSection() {
+        const audioProviders = [
+            { id: 'gemini', name: 'Google Gemini (Live API)' },
+            { id: 'speechmatics', name: 'Speechmatics (Live captions)' },
+            { id: 'whisper-local', name: 'Whisper (Local)' },
+        ];
+        const textProviders = [
+            { id: 'groq', name: 'Groq' },
+            { id: 'gemini', name: 'Google Gemma' },
+            { id: 'openrouter', name: 'OpenRouter' },
+            { id: 'deepseek', name: 'DeepSeek' },
+            { id: 'ollama', name: 'Ollama (Local)' },
+        ];
+        const imageProviders = [
+            { id: 'gemini', name: 'Google Gemini Flash' },
+            { id: 'openrouter', name: 'OpenRouter' },
+            { id: 'deepseek', name: 'DeepSeek' },
+            { id: 'ollama', name: 'Ollama (Local)' },
+        ];
+
+        const filteredModels = this._filterModels(this._openrouterSearch);
+        const showOpenRouter = this._textProvider === 'openrouter' || this._imageProvider === 'openrouter';
+
+        return html`
+            <section class="surface">
+                <div class="surface-title">AI Providers</div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Audio Transcription</label>
+                        <select class="control" .value=${this._audioProvider} @change=${e => this.handleProviderChange('audio', e)}>
+                            ${audioProviders.map(p => html`<option value=${p.id}>${p.name}</option>`)}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Text Generation</label>
+                        <select class="control" .value=${this._textProvider} @change=${e => this.handleProviderChange('text', e)}>
+                            ${textProviders.map(p => html`<option value=${p.id}>${p.name}</option>`)}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Image Analysis</label>
+                        <select class="control" .value=${this._imageProvider} @change=${e => this.handleProviderChange('image', e)}>
+                            ${imageProviders.map(p => html`<option value=${p.id}>${p.name}</option>`)}
+                        </select>
+                    </div>
+                    ${showOpenRouter
+                        ? html`
+                              <div class="form-group">
+                                  <label class="form-label">OpenRouter Model</label>
+                                  <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-bottom: 4px;">
+                                      Selected: <span style="color: var(--text-primary);">${this._openrouterModel}</span>
+                                  </div>
+                                  <input
+                                      class="control"
+                                      type="text"
+                                      placeholder="Search models..."
+                                      .value=${this._openrouterSearch}
+                                      @input=${this.handleOpenRouterSearch}
+                                  />
+                                  ${this._openrouterModelsLoading
+                                      ? html`<div style="font-size: var(--font-size-xs); color: var(--text-secondary); margin-top: 4px;">
+                                            Loading models...
+                                        </div>`
+                                      : html`
+                                            <div
+                                                class="model-list"
+                                                style="margin-top: 6px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);"
+                                            >
+                                                ${filteredModels.length === 0
+                                                    ? html`<div style="font-size: var(--font-size-xs); color: var(--text-muted); padding: 8px;">
+                                                          No models found
+                                                      </div>`
+                                                    : filteredModels.map(
+                                                          m => html`
+                                                              <div
+                                                                  class="model-item"
+                                                                  style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; cursor: pointer; border-bottom: 1px solid var(--border); ${this
+                                                                      ._openrouterModel === m.id
+                                                                      ? 'background: var(--bg-hover);'
+                                                                      : ''}"
+                                                                  @click=${() => this.handleOpenRouterModelSelect(m.id)}
+                                                              >
+                                                                  <div style="flex: 1; min-width: 0;">
+                                                                      <div
+                                                                          style="font-size: var(--font-size-sm); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                                                                      >
+                                                                          ${m.name || m.id}
+                                                                      </div>
+                                                                      <div
+                                                                          style="font-size: var(--font-size-xs); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                                                                      >
+                                                                          ${m.id}
+                                                                      </div>
+                                                                  </div>
+                                                                  <button
+                                                                      class="control"
+                                                                      style="width: auto; padding: 2px 8px; font-size: var(--font-size-xs); margin-left: 8px; flex-shrink: 0;"
+                                                                      @click=${e => {
+                                                                          e.stopPropagation();
+                                                                          this.testOpenRouterModel(m.id);
+                                                                      }}
+                                                                      ?disabled=${this._testingModel === m.id}
+                                                                  >
+                                                                      ${this._testingModel === m.id
+                                                                          ? 'Testing...'
+                                                                          : this._testResults[m.id]?.status === 'success'
+                                                                            ? 'Pass'
+                                                                            : this._testResults[m.id]?.status === 'error'
+                                                                              ? 'Fail'
+                                                                              : 'Test'}
+                                                                  </button>
+                                                              </div>
+                                                              ${this._testResults[m.id]
+                                                                  ? html`
+                                                                        <div
+                                                                            style="padding: 4px 8px; font-size: var(--font-size-xs); border-bottom: 1px solid var(--border); ${this
+                                                                                ._testResults[m.id].status === 'success'
+                                                                                ? 'color: var(--success);'
+                                                                                : 'color: var(--danger);'}"
+                                                                        >
+                                                                            ${this._testResults[m.id].status === 'success'
+                                                                                ? `OK: ${this._testResults[m.id].reply}`
+                                                                                : `Error: ${this._testResults[m.id].error}`}
+                                                                        </div>
+                                                                    `
+                                                                  : ''}
+                                                          `
+                                                      )}
+                                            </div>
+                                        `}
+                              </div>
+                          `
+                        : ''}
+                </div>
+            </section>
+        `;
+    }
+
     renderPrivacySection() {
         return html`
             <section class="surface danger-surface">
@@ -709,8 +1002,9 @@ export class CustomizeView extends LitElement {
             <div class="unified-page">
                 <div class="unified-wrap">
                     <div class="page-title">Settings</div>
-                    ${this.renderAudioSection()} ${this.renderLanguageSection()} ${this.renderAppearanceSection()} ${this.renderKeyboardSection()}
-                    ${this.renderPrivacySection()}
+                    ${this.renderProviderSection()} ${this.renderAnswerStyleSection()} ${this.renderAudioSection()} ${this.renderLanguageSection()}
+                    ${this.renderAppearanceSection()}
+                    ${this.renderKeyboardSection()} ${this.renderPrivacySection()}
                 </div>
             </div>
         `;

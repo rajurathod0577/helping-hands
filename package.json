@@ -26,6 +26,8 @@
     "dependencies": {
         "@google/genai": "^1.2.0",
         "@huggingface/transformers": "^3.8.1",
+        "@speechmatics/auth": "^0.1.0",
+        "@speechmatics/real-time-client": "^8.5.0",
         "electron-squirrel-startup": "^1.0.1",
         "ollama": "^0.6.3",
         "ws": "^8.19.0"

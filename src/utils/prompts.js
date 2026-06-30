@@ -201,7 +201,35 @@ Provide direct exam answers in **markdown format**. Include the question text, t
     },
 };
 
-function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true) {
+// Optional answer-style modifiers appended at the end of the system prompt so they take
+// precedence over the profile defaults. Driven by user preferences.
+//   options.answerFormat: 'bullets' → short, fast, bulleted answers; 'detailed' → default
+//   options.desiMode: true → natural Indian-English phrasing
+function buildAnswerModifiers(options = {}) {
+    const parts = [];
+
+    if (options.answerFormat === 'bullets') {
+        parts.push(
+            'Answer FAST and CONCISE. Lead with the direct answer in 3-6 short bullet points — no preamble, no filler. ' +
+                'For coding questions: a few bullets on the approach, then the complete code block. ' +
+                'For MCQs: state the correct option first, then a one-line why. ' +
+                'Prefer short bullets over paragraphs. Keep it scannable so it can be read at a glance.'
+        );
+    }
+
+    if (options.desiMode) {
+        parts.push(
+            'Speak the way a confident Indian candidate naturally speaks English: simple, direct, conversational ' +
+                'Indian-English phrasing rather than textbook or overly formal language. Keep it authentic and relatable, ' +
+                'using examples familiar in the Indian context where it helps. Stay professional — do not overdo slang.'
+        );
+    }
+
+    if (!parts.length) return '';
+    return '\n\nResponse style requirements (highest priority)\n-----\n' + parts.join('\n\n') + '\n-----';
+}
+
+function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true, options = {}) {
     const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements];
 
     // Only add search usage section if Google Search is enabled
@@ -211,15 +239,19 @@ function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled =
 
     sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n', promptParts.outputInstructions);
 
+    const modifiers = buildAnswerModifiers(options);
+    if (modifiers) sections.push(modifiers);
+
     return sections.join('');
 }
 
-function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true) {
+function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true, options = {}) {
     const promptParts = profilePrompts[profile] || profilePrompts.interview;
-    return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled);
+    return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled, options);
 }
 
 module.exports = {
     profilePrompts,
     getSystemPrompt,
+    buildAnswerModifiers,
 };

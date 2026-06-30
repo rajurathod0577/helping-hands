@@ -26,15 +26,52 @@ export class MainView extends LitElement {
             gap: var(--space-md);
         }
 
+        .brand-hero {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: var(--space-sm);
+        }
+
+        .brand-mark-lg {
+            width: 44px;
+            height: 44px;
+            border-radius: 13px;
+            background: var(--accent-gradient);
+            box-shadow: var(--shadow-accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .brand-mark-lg svg {
+            width: 24px;
+            height: 24px;
+            color: #fff;
+        }
+
+        .brand-hero-text {
+            flex: 1;
+            min-width: 0;
+        }
+
         .page-title {
-            font-size: var(--font-size-xl);
+            font-size: var(--font-size-2xl);
             font-weight: var(--font-weight-semibold);
             color: var(--text-primary);
-            margin-bottom: var(--space-xs);
+            letter-spacing: -0.02em;
         }
 
         .page-title .mode-suffix {
-            opacity: 0.5;
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            color: var(--accent);
+            background: var(--accent-soft);
+            padding: 2px 8px;
+            border-radius: var(--radius-pill);
+            vertical-align: middle;
+            margin-left: 4px;
         }
 
         .page-subtitle {
@@ -129,9 +166,9 @@ export class MainView extends LitElement {
             background: var(--bg-elevated);
             color: var(--text-primary);
             border: 1px solid var(--border);
-            padding: 10px 12px;
+            padding: 11px 13px;
             width: 100%;
-            border-radius: var(--radius-sm);
+            border-radius: var(--radius-md);
             font-size: var(--font-size-sm);
             font-family: var(--font);
             transition:
@@ -142,7 +179,7 @@ export class MainView extends LitElement {
         input:hover:not(:focus),
         select:hover:not(:focus),
         textarea:hover:not(:focus) {
-            border-color: var(--text-muted);
+            border-color: var(--border-strong);
         }
 
         input:focus,
@@ -150,7 +187,7 @@ export class MainView extends LitElement {
         textarea:focus {
             outline: none;
             border-color: var(--accent);
-            box-shadow: 0 0 0 1px var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
         }
 
         input::placeholder,
@@ -220,11 +257,11 @@ export class MainView extends LitElement {
         .start-button {
             position: relative;
             overflow: hidden;
-            background: #e8e8e8;
-            color: #111111;
+            background: var(--accent-gradient);
+            color: #ffffff;
             border: none;
-            padding: 12px var(--space-md);
-            border-radius: var(--radius-sm);
+            padding: 14px var(--space-md);
+            border-radius: var(--radius-md);
             font-size: var(--font-size-base);
             font-weight: var(--font-weight-semibold);
             cursor: pointer;
@@ -233,6 +270,8 @@ export class MainView extends LitElement {
             align-items: center;
             justify-content: center;
             gap: var(--space-sm);
+            box-shadow: var(--shadow-accent);
+            transition: transform var(--transition), box-shadow var(--transition), opacity var(--transition);
         }
 
         .start-button canvas.btn-aurora {
@@ -264,7 +303,12 @@ export class MainView extends LitElement {
         }
 
         .start-button:hover {
-            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 12px 30px rgba(109, 94, 248, 0.45);
+        }
+
+        .start-button:active {
+            transform: scale(0.99);
         }
 
         .start-button.disabled {
@@ -274,6 +318,29 @@ export class MainView extends LitElement {
 
         .start-button.disabled:hover {
             opacity: 0.5;
+        }
+
+        .start-button:disabled {
+            cursor: progress;
+        }
+
+        .start-button.is-starting {
+            opacity: 0.92;
+        }
+
+        .start-button.is-starting:hover {
+            transform: none;
+            box-shadow: var(--shadow-accent);
+        }
+
+        .start-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: whisper-spin 0.7s linear infinite;
         }
 
         .shortcut-hint {
@@ -510,6 +577,9 @@ export class MainView extends LitElement {
         _geminiKey: { state: true },
         _groqKey: { state: true },
         _openaiKey: { state: true },
+        _openrouterKey: { state: true },
+        _deepseekKey: { state: true },
+        _speechmaticsKey: { state: true },
         _tokenError: { state: true },
         _keyError: { state: true },
         // Local AI state
@@ -533,6 +603,9 @@ export class MainView extends LitElement {
         this._geminiKey = '';
         this._groqKey = '';
         this._openaiKey = '';
+        this._openrouterKey = '';
+        this._deepseekKey = '';
+        this._speechmaticsKey = '';
         this._tokenError = false;
         this._keyError = false;
         this._showLocalHelp = false;
@@ -568,6 +641,9 @@ export class MainView extends LitElement {
             this._geminiKey = (await helpingHands.storage.getApiKey().catch(() => '')) || '';
             this._groqKey = (await helpingHands.storage.getGroqApiKey().catch(() => '')) || '';
             this._openaiKey = creds.openaiKey || '';
+            this._openrouterKey = (await helpingHands.storage.getOpenRouterApiKey().catch(() => '')) || '';
+            this._deepseekKey = (await helpingHands.storage.getDeepSeekApiKey().catch(() => '')) || '';
+            this._speechmaticsKey = (await helpingHands.storage.getSpeechmaticsApiKey().catch(() => '')) || '';
 
             // Load local AI settings
             this._ollamaHost = prefs.ollamaHost || 'http://127.0.0.1:11434';
@@ -746,6 +822,24 @@ export class MainView extends LitElement {
         this.requestUpdate();
     }
 
+    async _saveOpenrouterKey(val) {
+        this._openrouterKey = val;
+        await helpingHands.storage.setOpenRouterApiKey(val);
+        this.requestUpdate();
+    }
+
+    async _saveDeepseekKey(val) {
+        this._deepseekKey = val;
+        await helpingHands.storage.setDeepSeekApiKey(val);
+        this.requestUpdate();
+    }
+
+    async _saveSpeechmaticsKey(val) {
+        this._speechmaticsKey = val;
+        await helpingHands.storage.setSpeechmaticsApiKey(val);
+        this.requestUpdate();
+    }
+
     async _saveOllamaHost(val) {
         this._ollamaHost = val;
         await helpingHands.storage.updatePreference('ollamaHost', val);
@@ -770,8 +864,8 @@ export class MainView extends LitElement {
 
     // ── Start ──
 
-    _handleStart() {
-        if (this.isInitializing) return;
+    async _handleStart() {
+        if (this.isInitializing) return; // guard against repeated clicks
 
         if (this._mode === 'byok') {
             if (!this._geminiKey.trim()) {
@@ -786,7 +880,20 @@ export class MainView extends LitElement {
             }
         }
 
-        this.onStart();
+        // Show progress on the button while the session connects (Speechmatics JWT +
+        // WebSocket handshake / model init can take a moment) so the user doesn't re-click.
+        this.isInitializing = true;
+        this.requestUpdate();
+        try {
+            await this.onStart();
+        } catch (e) {
+            console.error('Start session failed:', e);
+        } finally {
+            // On success the view switches to the assistant and this component unmounts;
+            // on failure we re-enable the button so the user can retry.
+            this.isInitializing = false;
+            this.requestUpdate();
+        }
     }
 
     triggerApiKeyError() {
@@ -848,12 +955,17 @@ export class MainView extends LitElement {
         </svg>`;
 
         return html`
-            <button class="start-button ${this.isInitializing ? 'disabled' : ''}" @click=${() => this._handleStart()}>
+            <button
+                class="start-button ${this.isInitializing ? 'is-starting' : ''}"
+                ?disabled=${this.isInitializing}
+                @click=${() => this._handleStart()}
+            >
                 <canvas class="btn-aurora"></canvas>
                 <canvas class="btn-dither"></canvas>
                 <span class="btn-label">
-                    Start Session
-                    <span class="shortcut-hint">${isMac ? cmdIcon : ctrlIcon}${enterIcon}</span>
+                    ${this.isInitializing
+                        ? html`<span class="start-spinner" aria-hidden="true"></span> Connecting…`
+                        : html`Start Session <span class="shortcut-hint">${isMac ? cmdIcon : ctrlIcon}${enterIcon}</span>`}
                 </span>
             </button>
         `;
@@ -893,9 +1005,53 @@ export class MainView extends LitElement {
 
             <div class="form-group">
                 <label class="form-label">Groq API Key</label>
-                <input type="password" placeholder="Optional" .value=${this._groqKey} @input=${e => this._saveGroqKey(e.target.value)} />
+                <input
+                    type="password"
+                    placeholder="Optional — for faster text responses"
+                    .value=${this._groqKey}
+                    @input=${e => this._saveGroqKey(e.target.value)}
+                />
                 <div class="form-hint">
                     <span class="link" @click=${() => this.onExternalLink('https://console.groq.com/keys')}>Get Groq key</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">OpenRouter API Key</label>
+                <input
+                    type="password"
+                    placeholder="Optional — access 100+ models"
+                    .value=${this._openrouterKey}
+                    @input=${e => this._saveOpenrouterKey(e.target.value)}
+                />
+                <div class="form-hint">
+                    <span class="link" @click=${() => this.onExternalLink('https://openrouter.ai/keys')}>Get OpenRouter key</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">DeepSeek API Key</label>
+                <input
+                    type="password"
+                    placeholder="Optional — DeepSeek models"
+                    .value=${this._deepseekKey}
+                    @input=${e => this._saveDeepseekKey(e.target.value)}
+                />
+                <div class="form-hint">
+                    <span class="link" @click=${() => this.onExternalLink('https://platform.deepseek.com/api_keys')}>Get DeepSeek key</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Speechmatics API Key</label>
+                <input
+                    type="password"
+                    placeholder="Optional — real-time transcription with live captions"
+                    .value=${this._speechmaticsKey}
+                    @input=${e => this._saveSpeechmaticsKey(e.target.value)}
+                />
+                <div class="form-hint">
+                    <span class="link" @click=${() => this.onExternalLink('https://portal.speechmatics.com/settings/api-keys')}>Get Speechmatics key</span>
                 </div>
             </div>
 
@@ -978,12 +1134,22 @@ export class MainView extends LitElement {
             <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 6L6 18M6 6l12 12" />
         </svg>`;
 
+        const brandMark = html`<span class="brand-mark-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v6m0 0 3-2m-3 2L9 6M5 12H2m20 0h-3M7 17l-2 2m12-2 2 2M12 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
+            </svg>
+        </span>`;
+
         return html`
             <div class="form-wrapper">
-                ${this._mode === 'local'
-                    ? html`
-                          <div class="title-row">
-                              <div class="page-title">Helping Hands <span class="mode-suffix">Local AI</span></div>
+                <div class="brand-hero">
+                    ${brandMark}
+                    <div class="brand-hero-text">
+                        <div class="page-title">Helping Hands <span class="mode-suffix">${this._mode === 'local' ? 'Local AI' : 'BYOK'}</span></div>
+                        <div class="page-subtitle">${this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}</div>
+                    </div>
+                    ${this._mode === 'local'
+                        ? html`
                               <button
                                   class="help-btn"
                                   @click=${() => {
@@ -992,10 +1158,9 @@ export class MainView extends LitElement {
                               >
                                   ${this._showLocalHelp ? closeIcon : helpIcon}
                               </button>
-                          </div>
-                      `
-                    : html` <div class="page-title">${html`Helping Hands <span class="mode-suffix">BYOK</span>`}</div> `}
-                <div class="page-subtitle">${this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}</div>
+                          `
+                        : ''}
+                </div>
 
                 <!-- Cloud mode render branch intentionally disabled. -->
                 ${this._mode === 'byok' ? this._renderByokMode() : ''}

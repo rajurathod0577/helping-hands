@@ -137,6 +137,63 @@ function setupStorageIpcHandlers() {
         }
     });
 
+    ipcMain.handle('storage:get-openrouter-api-key', async () => {
+        try {
+            return { success: true, data: storage.getOpenRouterApiKey() };
+        } catch (error) {
+            console.error('Error getting OpenRouter API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-openrouter-api-key', async (event, openrouterApiKey) => {
+        try {
+            storage.setOpenRouterApiKey(openrouterApiKey);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting OpenRouter API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:get-deepseek-api-key', async () => {
+        try {
+            return { success: true, data: storage.getDeepSeekApiKey() };
+        } catch (error) {
+            console.error('Error getting DeepSeek API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-deepseek-api-key', async (event, deepseekApiKey) => {
+        try {
+            storage.setDeepSeekApiKey(deepseekApiKey);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting DeepSeek API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:get-speechmatics-api-key', async () => {
+        try {
+            return { success: true, data: storage.getSpeechmaticsApiKey() };
+        } catch (error) {
+            console.error('Error getting Speechmatics API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-speechmatics-api-key', async (event, speechmaticsApiKey) => {
+        try {
+            storage.setSpeechmaticsApiKey(speechmaticsApiKey);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting Speechmatics API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // ============ PREFERENCES ============
     ipcMain.handle('storage:get-preferences', async () => {
         try {
@@ -261,6 +318,57 @@ function setupStorageIpcHandlers() {
 function setupGeneralIpcHandlers() {
     ipcMain.handle('get-app-version', async () => {
         return app.getVersion();
+    });
+
+    ipcMain.handle('openrouter-fetch-models', async (event, apiKey) => {
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/models', {
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                },
+            });
+            if (!response.ok) {
+                return { success: false, error: `HTTP ${response.status}` };
+            }
+            const data = await response.json();
+            const models = (data.data || []).map(m => ({
+                id: m.id,
+                name: m.name || m.id,
+                context_length: m.context_length,
+                pricing: m.pricing,
+            }));
+            return { success: true, data: models };
+        } catch (error) {
+            console.error('Error fetching OpenRouter models:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('openrouter-test-model', async (event, apiKey, modelId) => {
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: modelId,
+                    messages: [{ role: 'user', content: 'Say "Model works!" in exactly 3 words.' }],
+                    max_tokens: 20,
+                }),
+            });
+            if (!response.ok) {
+                const err = await response.text();
+                return { success: false, error: `HTTP ${response.status}: ${err}` };
+            }
+            const data = await response.json();
+            const reply = data.choices?.[0]?.message?.content || '';
+            return { success: true, reply };
+        } catch (error) {
+            console.error('Error testing OpenRouter model:', error);
+            return { success: false, error: error.message };
+        }
     });
 
     ipcMain.handle('quit-application', async event => {

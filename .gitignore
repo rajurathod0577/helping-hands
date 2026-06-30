@@ -93,3 +93,7 @@ typings/
 out/
 .specstory
 .specstory/
+
+# Agent skills (installed via the skills CLI)
+.agents/
+skills-lock.json

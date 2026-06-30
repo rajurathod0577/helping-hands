@@ -31,9 +31,10 @@ export const unifiedPageStyles = css`
     }
 
     .page-title {
-        font-size: var(--font-size-xl);
+        font-size: var(--font-size-2xl);
         font-weight: var(--font-weight-semibold);
         color: var(--text-primary);
+        letter-spacing: -0.02em;
         margin-bottom: 4px;
     }
 
@@ -44,15 +45,17 @@ export const unifiedPageStyles = css`
 
     .surface {
         border: 1px solid var(--border);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         background: var(--bg-surface);
-        padding: var(--space-md);
+        padding: var(--space-lg);
+        box-shadow: var(--shadow-sm);
     }
 
     .surface-title {
         color: var(--text-primary);
-        font-size: var(--font-size-md);
+        font-size: var(--font-size-lg);
         font-weight: var(--font-weight-semibold);
+        letter-spacing: -0.01em;
         margin-bottom: 4px;
     }
 
@@ -100,12 +103,12 @@ export const unifiedPageStyles = css`
     }
 
     .control {
-        width: 200px;
+        width: 220px;
         background: var(--bg-elevated);
         color: var(--text-primary);
         border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 8px 12px;
+        border-radius: var(--radius-md);
+        padding: 9px 12px;
         font-size: var(--font-size-sm);
         transition:
             border-color var(--transition),
@@ -119,7 +122,7 @@ export const unifiedPageStyles = css`
     .control:focus {
         outline: none;
         border-color: var(--accent);
-        box-shadow: 0 0 0 1px var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
     }
 
     select.control {
