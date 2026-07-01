@@ -97,6 +97,8 @@ function handleMessage(msg) {
         case 'transcription':
             console.log('[Cloud] Transcription:', msg.text);
             currentTranscription = msg.text || '';
+            // Surface the interviewer's words in the live transcript panel.
+            sendToRenderer('update-transcript', currentTranscription);
             sendToRenderer('update-status', 'Generating response...');
             break;
 

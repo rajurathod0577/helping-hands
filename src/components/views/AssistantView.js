@@ -389,6 +389,38 @@ export class AssistantView extends LitElement {
             background: var(--bg-app);
         }
 
+        .autoscroll-btn {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: color var(--transition), background var(--transition), border-color var(--transition);
+        }
+
+        .autoscroll-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .autoscroll-btn:hover {
+            color: var(--text-secondary);
+            border-color: var(--border-strong);
+        }
+
+        /* On = following latest: accent-tinted with a subtle bounce hint */
+        .autoscroll-btn.on {
+            color: var(--accent);
+            background: var(--accent-soft);
+            border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+        }
+
         .input-bar-inner {
             display: flex;
             align-items: center;
@@ -484,6 +516,7 @@ export class AssistantView extends LitElement {
         shouldAnimateResponse: { type: Boolean },
         isAnalyzing: { type: Boolean, state: true },
         _pendingQuestion: { type: String, state: true },
+        autoScroll: { type: Boolean, state: true },
     };
 
     constructor() {
@@ -496,6 +529,7 @@ export class AssistantView extends LitElement {
         this.isAnalyzing = false;
         this._pendingQuestion = ''; // chat question awaiting an answer (for the progress banner)
         this._pendingCountStart = 0;
+        this.autoScroll = true; // pin the response to the newest content; auto-pauses if you scroll up
         this._animFrame = null;
     }
 
@@ -812,6 +846,21 @@ export class AssistantView extends LitElement {
     firstUpdated() {
         super.firstUpdated();
         this.updateResponseContent();
+
+        // Auto-pause/resume auto-scroll based on where the user has scrolled. If they scroll
+        // up to read earlier text, stop pinning; when they return to the bottom, resume.
+        const container = this.shadowRoot.querySelector('#responseContainer');
+        if (container) {
+            container.addEventListener('scroll', () => {
+                const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
+                if (this.autoScroll !== nearBottom) this.autoScroll = nearBottom;
+            });
+        }
+    }
+
+    toggleAutoScroll() {
+        this.autoScroll = !this.autoScroll;
+        if (this.autoScroll) this.scrollToBottom();
     }
 
     updated(changedProperties) {
@@ -855,6 +904,9 @@ export class AssistantView extends LitElement {
             const renderedResponse = this.renderMarkdown(currentResponse);
             container.innerHTML = renderedResponse;
             this.addCopyButtonsToCodeBlocks(container);
+            if (this.autoScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
             if (this.shouldAnimateResponse) {
                 this.dispatchEvent(new CustomEvent('response-animation-complete', { bubbles: true, composed: true }));
             }
@@ -980,6 +1032,17 @@ export class AssistantView extends LitElement {
                 : ''}
 
             <div class="input-bar">
+                <button
+                    class="autoscroll-btn ${this.autoScroll ? 'on' : ''}"
+                    @click=${this.toggleAutoScroll}
+                    title=${this.autoScroll ? 'Auto-scroll on (following latest)' : 'Auto-scroll off'}
+                    aria-pressed=${this.autoScroll ? 'true' : 'false'}
+                    aria-label="Toggle auto-scroll"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 5v14M6 13l6 6 6-6" />
+                    </svg>
+                </button>
                 <div class="input-bar-inner">
                     <input type="text" id="textInput" placeholder="Type a message..." @keydown=${this.handleTextKeydown} />
                 </div>

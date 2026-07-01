@@ -200,6 +200,8 @@ async function handleSpeechEnd(audioData) {
     }
 
     sendToRenderer('update-status', 'Generating response...');
+    // Surface the transcribed words in the live transcript panel.
+    sendToRenderer('update-transcript', transcription);
     await sendToOllama(transcription);
 }
 
