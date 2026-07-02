@@ -1,10 +1,13 @@
-// speechmatics.js — real-time speech-to-text provider.
+// speechmatics.js — real-time speech-to-text provider (dual-stream).
 //
-// Speechmatics only transcribes audio; it does NOT generate answers. So this module
-// streams the interviewer's audio to Speechmatics over a WebSocket, surfaces the live
-// transcript on the UI (via the shared 'update-transcript' channel), and on end-of-utterance
-// hands the finished transcript to the configured text provider through gemini.js's
-// triggerAnswerGeneration() — the exact same answer pipeline the Gemini Live path uses.
+// Speechmatics only transcribes audio; it does NOT generate answers. The interview has two
+// physically separate audio sources — the interviewer (system audio) and the interviewee /
+// candidate (microphone) — so we run ONE independent Speechmatics stream per role. Because
+// each stream carries a single speaker, role labels are deterministic (no voice diarization
+// guesswork). Each stream surfaces its transcript on the shared 'update-transcript' channel
+// tagged with its role; on end-of-utterance the interviewer stream hands finished questions
+// to gemini.js's triggerAnswerGeneration(), while the interviewee stream feeds what the
+// candidate actually said into the answer context via gemini.js's recordIntervieweeUtterance().
 
 const { RealtimeClient } = require('@speechmatics/real-time-client');
 const { createSpeechmaticsJWT } = require('@speechmatics/auth');
@@ -18,12 +21,22 @@ function getGemini() {
     return _gemini;
 }
 
-let client = null;
+function makeStream(role) {
+    return {
+        role,
+        client: null,
+        conversation: '', // full running conversation (every finalized utterance) — shown live
+        currentUtterance: '', // finalized text for the in-progress segment (resets each utterance)
+        lastUtterance: '', // the most recently completed utterance
+        audioBytes: 0, // raw PCM bytes streamed — for exact audio-duration/cost
+    };
+}
+
+const streams = {
+    interviewer: makeStream('interviewer'),
+    interviewee: makeStream('interviewee'),
+};
 let isStarting = false;
-let audioBytesSent = 0; // raw PCM bytes streamed this session — for exact audio-duration/cost
-let conversation = ''; // full running conversation (every finalized utterance) — shown live
-let currentUtterance = ''; // finalized text for the in-progress segment (resets each utterance)
-let lastUtterance = ''; // the most recently completed utterance (the "last asked question" candidate)
 
 // Map app language codes (e.g. 'en-US') to Speechmatics ISO codes (e.g. 'en').
 function toSpeechmaticsLanguage(language) {
@@ -32,13 +45,13 @@ function toSpeechmaticsLanguage(language) {
 }
 
 // Live preview = the WHOLE conversation so far + the in-progress utterance + current partial.
-function buildDisplay(partial) {
-    return [conversation.trim(), currentUtterance.trim(), (partial || '').trim()].filter(Boolean).join(' ');
+function buildDisplay(s, partial) {
+    return [s.conversation.trim(), s.currentUtterance.trim(), (partial || '').trim()].filter(Boolean).join(' ');
 }
 
 // Heuristic: does this utterance look like a question worth answering? Used so we only
-// answer ACTUAL questions automatically (not every statement / pause), which is what makes
-// the old behaviour feel "random". The manual Answer button can still answer anything.
+// answer ACTUAL questions automatically (not every statement / pause). The manual Answer
+// button can still answer anything.
 function isLikelyQuestion(text) {
     const t = (text || '').trim().toLowerCase();
     if (!t) return false;
@@ -48,48 +61,52 @@ function isLikelyQuestion(text) {
     );
 }
 
-function handleMessage(data) {
+// Transcript updates are tagged with the speaker role so the UI can show two panels.
+function emitTranscript(role, text) {
+    getGemini().sendToRenderer('update-transcript', { role, text });
+}
+
+function handleMessage(s, data) {
     const gemini = getGemini();
 
     switch (data.message) {
         case 'AddPartialTranscript': {
-            // Interim result — show it live (appended to the running conversation), don't commit.
             const partial = data.metadata?.transcript || '';
-            gemini.sendToRenderer('update-transcript', buildDisplay(partial));
+            emitTranscript(s.role, buildDisplay(s, partial));
             break;
         }
         case 'AddTranscript': {
-            // Final result for a span — commit it to the current utterance.
             const finalText = data.metadata?.transcript || '';
             if (finalText.trim()) {
-                currentUtterance = [currentUtterance.trim(), finalText.trim()].filter(Boolean).join(' ');
+                s.currentUtterance = [s.currentUtterance.trim(), finalText.trim()].filter(Boolean).join(' ');
             }
-            gemini.sendToRenderer('update-transcript', buildDisplay(''));
+            emitTranscript(s.role, buildDisplay(s, ''));
             break;
         }
         case 'EndOfUtterance': {
-            // Speaker paused — the utterance is complete. Fold it into the running conversation
-            // (which stays on screen), remember it as the last question, and ONLY auto-answer
-            // if it actually looks like a question.
-            const utt = currentUtterance.trim();
+            const utt = s.currentUtterance.trim();
             if (utt) {
-                conversation = [conversation.trim(), utt].filter(Boolean).join(' ');
-                lastUtterance = utt;
-                if (isLikelyQuestion(utt)) {
-                    gemini.triggerAnswerGeneration(utt);
+                s.conversation = [s.conversation.trim(), utt].filter(Boolean).join(' ');
+                s.lastUtterance = utt;
+                if (s.role === 'interviewer') {
+                    // Only the interviewer's speech auto-triggers an answer.
+                    if (isLikelyQuestion(utt)) gemini.triggerAnswerGeneration(utt);
+                } else if (typeof gemini.recordIntervieweeUtterance === 'function') {
+                    // The candidate spoke — feed it into the answer context; never auto-answer it.
+                    gemini.recordIntervieweeUtterance(utt);
                 }
             }
-            currentUtterance = '';
-            gemini.sendToRenderer('update-transcript', conversation);
+            s.currentUtterance = '';
+            emitTranscript(s.role, s.conversation);
             break;
         }
         case 'Error': {
-            console.error('[Speechmatics] Error:', data.type, data.reason);
+            console.error(`[Speechmatics:${s.role}] Error:`, data.type, data.reason);
             gemini.sendToRenderer('update-status', 'Speechmatics error: ' + data.reason);
             break;
         }
         case 'Warning': {
-            console.warn('[Speechmatics] Warning:', data.type, data.reason);
+            console.warn(`[Speechmatics:${s.role}] Warning:`, data.type, data.reason);
             break;
         }
         default:
@@ -97,6 +114,40 @@ function handleMessage(data) {
     }
 }
 
+async function startStream(role, key, language, eouTrigger) {
+    const s = streams[role];
+    s.conversation = '';
+    s.currentUtterance = '';
+    s.lastUtterance = '';
+    s.audioBytes = 0;
+
+    const client = new RealtimeClient();
+    client.addEventListener('receiveMessage', ({ data }) => {
+        try {
+            handleMessage(s, data);
+        } catch (err) {
+            console.error(`[Speechmatics:${role}] message handler error:`, err);
+        }
+    });
+
+    // The realtime API authenticates with a short-lived JWT minted from the API key.
+    const jwt = await createSpeechmaticsJWT({ type: 'rt', apiKey: key, ttl: 3600 });
+    await client.start(jwt, {
+        audio_format: { type: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 },
+        transcription_config: {
+            language,
+            model: 'enhanced',
+            enable_partials: true,
+            max_delay: 1.5,
+            conversation_config: { end_of_utterance_silence_trigger: eouTrigger },
+        },
+    });
+    s.client = client;
+    console.log(`[Speechmatics:${role}] stream started (language=${language}, eou=${eouTrigger}s)`);
+}
+
+// options.roles: which speaker streams to start (default ['interviewer']). Pass
+// ['interviewer','interviewee'] when the audio mode captures both sides.
 async function initSpeechmatics(apiKey, options = {}) {
     const key = apiKey || getSpeechmaticsApiKey();
     if (!key) {
@@ -106,111 +157,107 @@ async function initSpeechmatics(apiKey, options = {}) {
     if (isStarting) return false;
     isStarting = true;
 
-    // Tear down any previous session first.
+    // Tear down any previous streams first.
     await closeSpeechmatics();
 
     const prefs = getPreferences();
     const language = toSpeechmaticsLanguage(options.language || prefs.selectedLanguage);
-    const eouTrigger =
-        typeof prefs.speechmaticsEouTrigger === 'number' ? prefs.speechmaticsEouTrigger : 1.5;
+    const eouTrigger = typeof prefs.speechmaticsEouTrigger === 'number' ? prefs.speechmaticsEouTrigger : 1.5;
+    const roles = Array.isArray(options.roles) && options.roles.length ? options.roles : ['interviewer'];
 
-    conversation = '';
-    currentUtterance = '';
-    lastUtterance = '';
-    audioBytesSent = 0;
-    client = new RealtimeClient();
-
-    client.addEventListener('receiveMessage', ({ data }) => {
-        try {
-            handleMessage(data);
-        } catch (err) {
-            console.error('[Speechmatics] message handler error:', err);
-        }
-    });
-
+    // The interviewer stream is essential — if it fails, the session fails.
     try {
-        // The realtime API authenticates with a short-lived JWT minted from the API key.
-        const jwt = await createSpeechmaticsJWT({ type: 'rt', apiKey: key, ttl: 3600 });
-        await client.start(jwt, {
-            audio_format: { type: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 },
-            transcription_config: {
-                language,
-                model: 'enhanced',
-                enable_partials: true,
-                max_delay: 1.5,
-                conversation_config: { end_of_utterance_silence_trigger: eouTrigger },
-            },
-        });
-        console.log(`[Speechmatics] Session started (language=${language}, eou=${eouTrigger}s)`);
-        getGemini().sendToRenderer('update-status', 'Live session connected');
-        isStarting = false;
-        return true;
+        await startStream('interviewer', key, language, eouTrigger);
     } catch (error) {
         console.error('[Speechmatics] Failed to start:', error);
-        // The auth endpoint returns an HTML error page (not JSON) when the API key is
-        // rejected — the SDK then throws a JSON parse error. Translate that into a clear,
-        // actionable message instead of the cryptic "Failed to parse JSON response".
+        // The auth endpoint returns an HTML error page (not JSON) when the API key is rejected —
+        // the SDK then throws a JSON parse error. Translate that into a clear, actionable message.
         const raw = (error && (error.message || String(error))) || '';
         const cause = error && error.cause ? String(error.cause) : '';
         const looksLikeBadKey =
             /parse JSON|Unexpected token|Unauthorized|forbidden|\b40[13]\b/i.test(raw) ||
             /Unexpected token '<'|not valid JSON|<html/i.test(cause);
-        const message = looksLikeBadKey
-            ? 'Speechmatics API key looks invalid or expired — check it in Settings, or switch the Audio provider.'
-            : 'Speechmatics error: ' + (raw || 'failed to start');
-        getGemini().sendToRenderer('update-status', message);
-        client = null;
+        getGemini().sendToRenderer(
+            'update-status',
+            looksLikeBadKey
+                ? 'Speechmatics API key looks invalid or expired — check it in Settings, or switch the Audio provider.'
+                : 'Speechmatics error: ' + (raw || 'failed to start')
+        );
+        await closeSpeechmatics();
         isStarting = false;
         return false;
     }
+
+    // The interviewee (mic) stream is optional — if it can't start, keep the interviewer running.
+    if (roles.includes('interviewee')) {
+        try {
+            await startStream('interviewee', key, language, eouTrigger);
+        } catch (error) {
+            console.warn('[Speechmatics:interviewee] failed to start (continuing interviewer-only):', error && error.message);
+            getGemini().sendToRenderer('update-status', 'Your-mic transcription unavailable — interviewer only');
+        }
+    }
+
+    console.log(`[Speechmatics] Session started (language=${language}, roles=${roles.join('+')})`);
+    getGemini().sendToRenderer('update-status', 'Live session connected');
+    isStarting = false;
+    return true;
 }
 
-function sendAudio(base64Data) {
-    if (!client || client.socketState !== 'open') return false;
+function sendAudio(base64Data, role = 'interviewer') {
+    const s = streams[role];
+    if (!s || !s.client || s.client.socketState !== 'open') return false;
     try {
         const buffer = Buffer.from(base64Data, 'base64');
-        client.sendAudio(buffer);
-        audioBytesSent += buffer.length;
+        s.client.sendAudio(buffer);
+        s.audioBytes += buffer.length;
         return true;
     } catch (error) {
-        console.error('[Speechmatics] sendAudio error:', error);
+        console.error(`[Speechmatics:${role}] sendAudio error:`, error);
         return false;
     }
 }
 
 async function closeSpeechmatics() {
-    if (!client) return;
-    try {
-        if (client.socketState === 'open') {
-            await client.stopRecognition({ noTimeout: true }).catch(() => {});
+    for (const role of Object.keys(streams)) {
+        const s = streams[role];
+        if (s.client) {
+            try {
+                if (s.client.socketState === 'open') {
+                    await s.client.stopRecognition({ noTimeout: true }).catch(() => {});
+                }
+            } catch (err) {
+                // best-effort teardown
+            }
+            s.client = null;
         }
-    } catch (err) {
-        // best-effort teardown
+        s.conversation = '';
+        s.currentUtterance = '';
+        s.lastUtterance = '';
+        s.audioBytes = 0;
     }
-    client = null;
-    conversation = '';
-    currentUtterance = '';
-    lastUtterance = '';
 }
 
 function isActive() {
-    return !!client && client.socketState === 'open';
+    return !!streams.interviewer.client && streams.interviewer.client.socketState === 'open';
 }
 
-// The most recently completed utterance — used by the manual "Answer" button so it answers
-// the last thing said (typically the last question) rather than the whole conversation.
+// The interviewer's most recently completed utterance — used by the manual "Answer" button
+// so it answers the last question rather than the whole conversation.
 function getLastUtterance() {
-    return (lastUtterance || currentUtterance || '').trim();
+    const s = streams.interviewer;
+    return (s.lastUtterance || s.currentUtterance || '').trim();
 }
 
 function getConversation() {
-    return [conversation.trim(), currentUtterance.trim()].filter(Boolean).join(' ');
+    const s = streams.interviewer;
+    return [s.conversation.trim(), s.currentUtterance.trim()].filter(Boolean).join(' ');
 }
 
-// Exact audio duration streamed to Speechmatics, derived from bytes sent.
+// Exact audio duration streamed to Speechmatics (both streams summed), derived from bytes.
 // Format is raw PCM s16le @ 24 kHz mono = 2 bytes/sample × 24000 = 48000 bytes/sec.
 function getAudioSeconds() {
-    return audioBytesSent / 48000;
+    return (streams.interviewer.audioBytes + streams.interviewee.audioBytes) / 48000;
 }
 
 module.exports = {

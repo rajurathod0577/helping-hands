@@ -1066,6 +1066,8 @@ export class HelpingHandsApp extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         liveTranscript: { type: String },
+        liveTranscriptInterviewee: { type: String },
+        _dualAudio: { state: true },
         selectedScreenshotInterval: { type: String },
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
@@ -1098,6 +1100,8 @@ export class HelpingHandsApp extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.liveTranscript = '';
+        this.liveTranscriptInterviewee = '';
+        this._dualAudio = false;
         this._viewInstances = new Map();
         this._isClickThrough = false;
         this._awaitingNewResponse = false;
@@ -1153,6 +1157,7 @@ export class HelpingHandsApp extends LitElement {
             this.selectedImageQuality = prefs.selectedImageQuality || 'medium';
             this.layoutMode = config.layout || 'normal';
             this._backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
+            this._dualAudio = prefs.audioMode === 'both';
 
             this._storageLoaded = true;
             this.requestUpdate();
@@ -1329,8 +1334,18 @@ export class HelpingHandsApp extends LitElement {
         this.requestUpdate();
     }
 
-    updateLiveTranscript(transcript) {
-        this.liveTranscript = transcript || '';
+    updateLiveTranscript(data) {
+        // Speechmatics sends role-tagged { role, text }; other providers send a plain string
+        // (treated as the interviewer, the legacy single-stream behaviour).
+        if (data && typeof data === 'object') {
+            if (data.role === 'interviewee') {
+                this.liveTranscriptInterviewee = data.text || '';
+            } else {
+                this.liveTranscript = data.text || '';
+            }
+        } else {
+            this.liveTranscript = data || '';
+        }
         this.requestUpdate();
     }
 
@@ -1384,6 +1399,7 @@ export class HelpingHandsApp extends LitElement {
 
     async handleStart() {
         const prefs = await helpingHands.storage.getPreferences();
+        this._dualAudio = prefs.audioMode === 'both'; // show the interviewee panel when both sides are captured
         const rawProviderMode = prefs.providerMode || 'api';
         // Normalize legacy modes ('cloud'/'byok') to 'api'
         const providerMode = rawProviderMode === 'cloud' || rawProviderMode === 'byok' ? 'api' : rawProviderMode;
@@ -1451,6 +1467,7 @@ export class HelpingHandsApp extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.liveTranscript = '';
+        this.liveTranscriptInterviewee = '';
         this._collapsed = false;
         this._liveCost = null;
         this._sessionCostCard = null;
@@ -1609,6 +1626,8 @@ export class HelpingHandsApp extends LitElement {
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
                         .liveTranscript=${this.liveTranscript}
+                        .liveTranscriptInterviewee=${this.liveTranscriptInterviewee}
+                        .showInterviewee=${this._dualAudio}
                         .selectedProfile=${this.selectedProfile}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
@@ -1967,6 +1986,7 @@ export class HelpingHandsApp extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.liveTranscript = '';
+        this.liveTranscriptInterviewee = '';
         if (window.require) {
             try {
                 const { ipcRenderer } = window.require('electron');

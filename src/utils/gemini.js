@@ -125,10 +125,15 @@ function computeSessionCost(extra = {}) {
     } else if (sessionUsage.startedAt) {
         audioSeconds = (Date.now() - sessionUsage.startedAt) / 1000;
     }
+    // Wall-clock session length — used for the "Duration" display. It differs from
+    // audioSeconds in dual-stream (both) mode, where audioSeconds sums the interviewer +
+    // interviewee streams (which is correct for per-minute audio billing).
+    const durationSeconds = sessionUsage.startedAt ? (Date.now() - sessionUsage.startedAt) / 1000 : audioSeconds;
     return computeCost({
         text: sessionUsage.text,
         audioProvider: sessionUsage.audioProvider,
         audioSeconds,
+        durationSeconds,
         estimated: sessionUsage.estimated,
         actualCharged: extra.actualCharged || null,
     });
@@ -271,6 +276,8 @@ function initializeNewSession(profile = null, customPrompt = null) {
     currentProfile = profile;
     currentCustomPrompt = customPrompt;
     resetSessionUsage();
+    speculativeAnswers = []; // clear any pre-generated answers from a prior session
+    if (prefetchEnabled()) getEmbedder().catch(() => {}); // warm the semantic matcher in the background
     snapshotDeepSeekStartBalance(); // for the exact balance-delta reconciliation at session end
     console.log('New conversation session started:', currentSessionId, 'profile:', profile);
 
@@ -336,6 +343,244 @@ function getCurrentSessionData() {
         sessionId: currentSessionId,
         history: conversationHistory,
     };
+}
+
+// Called (by the interviewee Speechmatics stream) when the candidate — you — finishes
+// speaking. The AI answers AS the candidate, so your real words become the "assistant" voice
+// in the running history. This keeps the next suggestion grounded in what you actually said:
+// it won't repeat it, and it can build on or course-correct from your live answer. We replace
+// the last provisional AI suggestion with your real words when possible, else append.
+function recordIntervieweeUtterance(text) {
+    const clean = (text || '').trim();
+    if (!clean) return;
+    const last = groqConversationHistory[groqConversationHistory.length - 1];
+    if (last && last.role === 'assistant') {
+        last.content = clean;
+    } else {
+        groqConversationHistory.push({ role: 'assistant', content: clean });
+    }
+    if (groqConversationHistory.length > 40) {
+        groqConversationHistory = groqConversationHistory.slice(-40);
+    }
+    console.log('[Interviewee] recorded utterance into context:', clean.slice(0, 80));
+}
+
+// ── Speculative answer prefetch ──────────────────────────────────────────────
+// After each answer we ask the model, in the background, for the most likely NEXT questions
+// AND their complete answers, then cache them (silently — never shown). When the interviewer
+// actually asks a matching question, we serve the cached answer INSTANTLY instead of waiting
+// on a fresh reasoning pass. A conservative fuzzy match avoids serving the wrong answer.
+const PREFETCH_N = 2;
+let speculativeAnswers = []; // [{ question, answer }]
+let pregenerating = false;
+
+const STOPWORDS = new Set([
+    'the', 'a', 'an', 'to', 'of', 'in', 'on', 'for', 'and', 'or', 'is', 'are', 'do', 'does', 'did',
+    'you', 'your', 'me', 'my', 'i', 'so', 'can', 'could', 'would', 'will', 'please', 'tell', 'about',
+    'what', 'whats', 'how', 'why', 'when', 'where', 'with', 'that', 'this', 'it', 'we', 'us', 'be',
+]);
+
+function prefetchEnabled() {
+    try {
+        return getPreferences().speculativePrefetch !== false;
+    } catch (e) {
+        return true;
+    }
+}
+
+function normalizeQ(s) {
+    return (s || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w && !STOPWORDS.has(w));
+}
+
+// Jaccard overlap of content words — cheap, dependency-free question similarity.
+function questionSimilarity(aTokens, bTokens) {
+    if (!aTokens.length || !bTokens.length) return 0;
+    const setB = new Set(bTokens);
+    const inter = aTokens.filter(t => setB.has(t)).length;
+    const union = new Set([...aTokens, ...bTokens]).size;
+    return inter / union;
+}
+
+// Local sentence-embedding model for SEMANTIC matching (paraphrased questions won't share
+// enough words for lexical matching). Runs in-process via @huggingface/transformers (same
+// dep Whisper uses). Best-effort: if it can't load, we fall back to lexical matching.
+let _embedder = null;
+let _embedderLoading = null;
+function getEmbedder() {
+    if (_embedder) return Promise.resolve(_embedder);
+    if (_embedderLoading) return _embedderLoading;
+    _embedderLoading = (async () => {
+        try {
+            const { pipeline, env } = await import('@huggingface/transformers');
+            const { app } = require('electron');
+            const path = require('path');
+            env.cacheDir = path.join(app.getPath('userData'), 'embedding-models');
+            const pipe = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+            _embedder = pipe;
+            console.log('[Prefetch] embedder ready (semantic matching enabled)');
+            return pipe;
+        } catch (e) {
+            console.warn('[Prefetch] embedder unavailable — using lexical matching:', e.message);
+            return null;
+        } finally {
+            _embedderLoading = null;
+        }
+    })();
+    return _embedderLoading;
+}
+
+async function embed(text) {
+    const pipe = await getEmbedder();
+    if (!pipe) return null;
+    const out = await pipe(text, { pooling: 'mean', normalize: true });
+    return Array.from(out.data);
+}
+
+function cosine(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let dot = 0;
+    for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+    return dot; // vectors are already L2-normalized
+}
+
+// Conservative: only return a cached answer when we're confident it's the same question.
+// Prefer semantic (embedding) similarity when the model is ready; otherwise lexical overlap.
+async function findSpeculativeAnswer(question) {
+    if (!speculativeAnswers.length) return null;
+
+    if (_embedder && speculativeAnswers.some(x => x.embedding)) {
+        try {
+            const qv = await embed(question);
+            if (qv) {
+                let best = null;
+                let bestScore = 0;
+                for (const item of speculativeAnswers) {
+                    if (!item.embedding) continue;
+                    const s = cosine(qv, item.embedding);
+                    if (s > bestScore) {
+                        bestScore = s;
+                        best = item;
+                    }
+                }
+                // 0.75 separates true paraphrases (~0.76+) from different-but-related questions
+                // (~0.65-0.72, e.g. "strengths" vs "weaknesses") — avoids serving a wrong answer.
+                return best && bestScore >= 0.75 ? best : null;
+            }
+        } catch (e) {
+            // fall through to lexical
+        }
+    }
+
+    const qTokens = normalizeQ(question);
+    if (qTokens.length < 2) return null;
+    let best = null;
+    let bestScore = 0;
+    for (const item of speculativeAnswers) {
+        const score = questionSimilarity(qTokens, normalizeQ(item.question));
+        if (score > bestScore) {
+            bestScore = score;
+            best = item;
+        }
+    }
+    return bestScore >= 0.5 ? best : null;
+}
+
+// Serve a pre-generated answer immediately, mirroring what the normal DeepSeek path does on
+// completion (history + persisted turn), then refill the cache for the following question.
+function serveCachedAnswer(question, item) {
+    const q = question.trim();
+    sendToRenderer('new-response', item.answer);
+    groqConversationHistory.push({ role: 'user', content: q });
+    groqConversationHistory.push({ role: 'assistant', content: item.answer });
+    if (groqConversationHistory.length > 20) groqConversationHistory = groqConversationHistory.slice(-20);
+    saveConversationTurn(q, item.answer);
+    speculativeAnswers = speculativeAnswers.filter(x => x !== item);
+    console.log('[Prefetch] served pre-generated answer (instant)');
+    sendToRenderer('update-status', 'Listening...');
+    schedulePregeneration();
+}
+
+function schedulePregeneration() {
+    if (!prefetchEnabled()) return;
+    pregenerateAnswers().catch(() => {});
+}
+
+function parsePrefetch(content) {
+    try {
+        const obj = JSON.parse(content);
+        const arr = Array.isArray(obj) ? obj : obj.items || obj.predictions || obj.questions || [];
+        return arr
+            .filter(x => x && x.question && x.answer)
+            .map(x => ({ question: String(x.question), answer: stripThinkingTags(String(x.answer)).trim() }))
+            .filter(x => x.answer);
+    } catch (e) {
+        return [];
+    }
+}
+
+// Background: predict the next likely questions AND their answers in one call, then cache.
+async function pregenerateAnswers() {
+    if (pregenerating || !prefetchEnabled()) return;
+    if (getProviderConfig().text !== 'deepseek') return; // prefetch is wired for DeepSeek
+    const apiKey = getDeepSeekApiKey();
+    if (!apiKey) return;
+
+    const dialogue = groqConversationHistory
+        .slice(-12)
+        .map(m => (m.role === 'user' ? `Interviewer: ${m.content}` : `Candidate: ${m.content}`))
+        .join('\n');
+    if (!dialogue.trim()) return;
+
+    pregenerating = true;
+    try {
+        const prompt =
+            `Based on the interview so far, predict the ${PREFETCH_N} MOST LIKELY next questions the interviewer ` +
+            `will ask. Phrase each question the natural, general way an interviewer would actually say it (do NOT ` +
+            `over-specify with details the interviewer hasn't mentioned). For EACH, write the COMPLETE answer the ` +
+            `candidate should say (same voice, language and style you normally answer in). ` +
+            `Respond ONLY as JSON: {"items":[{"question":"...","answer":"..."}]}.\n\n` +
+            `Conversation so far:\n${dialogue}`;
+        const response = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'deepseek-v4-flash',
+                messages: [
+                    { role: 'system', content: currentSystemPrompt || 'You are an expert interview coach answering as the candidate.' },
+                    { role: 'user', content: prompt },
+                ],
+                stream: false,
+                temperature: 0.5,
+                max_tokens: 3072,
+                response_format: { type: 'json_object' },
+            }),
+        });
+        if (!response.ok) return;
+        const json = await response.json();
+        if (json.usage) recordTextUsage('deepseek', 'deepseek-v4-flash', json.usage, null);
+        const items = parsePrefetch(json.choices?.[0]?.message?.content || '');
+        if (items.length) {
+            const top = items.slice(0, PREFETCH_N);
+            // Precompute question embeddings for semantic matching (best-effort).
+            for (const item of top) {
+                try {
+                    item.embedding = await embed(item.question);
+                } catch (e) {
+                    item.embedding = null;
+                }
+            }
+            speculativeAnswers = top;
+            console.log(`[Prefetch] cached ${speculativeAnswers.length} pre-generated answer(s)`);
+        }
+    } catch (error) {
+        console.error('[Prefetch] error:', error.message);
+    } finally {
+        pregenerating = false;
+    }
 }
 
 async function getEnabledTools() {
@@ -864,6 +1109,8 @@ async function sendToDeepSeek(transcription) {
 
         console.log(`DeepSeek response completed (${modelToUse})`);
         sendToRenderer('update-status', 'Listening...');
+        // Warm the cache for the likely next question(s) while the interview continues.
+        schedulePregeneration();
     } catch (error) {
         console.error('Error calling DeepSeek API:', error);
         sendToRenderer('update-status', 'DeepSeek error: ' + error.message);
@@ -874,8 +1121,21 @@ async function sendToDeepSeek(transcription) {
 // Shared by the Gemini Live path (on generationComplete) and the Speechmatics path
 // (on end-of-utterance) so answer generation behaves identically regardless of how
 // the audio was transcribed.
-function triggerAnswerGeneration(transcript) {
+async function triggerAnswerGeneration(transcript) {
     if (!transcript || transcript.trim() === '') return;
+
+    // If we pre-generated an answer for this (or a semantically similar) question, serve it instantly.
+    if (prefetchEnabled()) {
+        try {
+            const cached = await findSpeculativeAnswer(transcript);
+            if (cached) {
+                serveCachedAnswer(transcript, cached);
+                return;
+            }
+        } catch (e) {
+            // fall through to normal generation
+        }
+    }
 
     const providerConfig = getProviderConfig();
     const textProvider = providerConfig.text || 'groq';
@@ -1188,7 +1448,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(monoChunk);
             } else if (currentProviderMode === 'speechmatics') {
-                getSpeechmatics().sendAudio(monoChunk.toString('base64'));
+                // macOS system-audio capture is the interviewer stream.
+                getSpeechmatics().sendAudio(monoChunk.toString('base64'), 'interviewer');
             } else {
                 const base64Data = monoChunk.toString('base64');
                 sendAudioToGemini(base64Data, geminiSessionRef);
@@ -1598,7 +1859,10 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         // Speechmatics streams audio for the whole session — track it for cost estimation.
         markAudioProvider('speechmatics');
         emitLiveCost(); // show the live cost counter from the start (audio accrues immediately)
-        const success = await getSpeechmatics().initSpeechmatics(apiKey, { language, profile, customPrompt });
+        // In "both" audio mode we also transcribe the microphone (the interviewee) on a
+        // second, independent Speechmatics stream so the two speakers never get jumbled.
+        const roles = getPreferences().audioMode === 'both' ? ['interviewer', 'interviewee'] : ['interviewer'];
+        const success = await getSpeechmatics().initSpeechmatics(apiKey, { language, profile, customPrompt, roles });
         sendToRenderer('session-initializing', false);
         if (!success) {
             currentProviderMode = 'api';
@@ -1628,7 +1892,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
         if (currentProviderMode === 'speechmatics') {
-            getSpeechmatics().sendAudio(data);
+            // System audio is the interviewer.
+            getSpeechmatics().sendAudio(data, 'interviewer');
             return { success: true };
         }
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
@@ -1667,7 +1932,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
         if (currentProviderMode === 'speechmatics') {
-            getSpeechmatics().sendAudio(data);
+            // In "both" mode the mic is the interviewee (you) — a second stream that only feeds
+            // context. In "mic_only" mode the mic is the PRIMARY source we answer from (in-person
+            // interviews, one mic hears the interviewer), so route it to the interviewer stream.
+            const micRole = getPreferences().audioMode === 'both' ? 'interviewee' : 'interviewer';
+            getSpeechmatics().sendAudio(data, micRole);
             return { success: true };
         }
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
@@ -1954,4 +2223,5 @@ module.exports = {
     setupGeminiIpcHandlers,
     formatSpeakerResults,
     triggerAnswerGeneration,
+    recordIntervieweeUtterance,
 };

@@ -421,6 +421,7 @@ export class CustomizeView extends LitElement {
         googleSearchEnabled: { type: Boolean },
         answerFormat: { type: String },
         desiMode: { type: Boolean },
+        speculativePrefetch: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         theme: { type: String },
@@ -458,6 +459,7 @@ export class CustomizeView extends LitElement {
         this.googleSearchEnabled = true;
         this.answerFormat = 'bullets';
         this.desiMode = false;
+        this.speculativePrefetch = true;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -489,6 +491,7 @@ export class CustomizeView extends LitElement {
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
             this.answerFormat = prefs.answerFormat ?? 'bullets';
             this.desiMode = prefs.desiMode ?? false;
+            this.speculativePrefetch = prefs.speculativePrefetch ?? true;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
@@ -684,6 +687,12 @@ export class CustomizeView extends LitElement {
     async handleDesiModeChange(e) {
         this.desiMode = e.target.checked;
         await helpingHands.storage.updatePreference('desiMode', this.desiMode);
+        this.requestUpdate();
+    }
+
+    async handlePrefetchChange(e) {
+        this.speculativePrefetch = e.target.checked;
+        await helpingHands.storage.updatePreference('speculativePrefetch', this.speculativePrefetch);
         this.requestUpdate();
     }
 
@@ -976,6 +985,21 @@ export class CustomizeView extends LitElement {
                             <span class="switch"></span>
                         </label>
                         <div class="field-hint">Answers come back in natural Hinglish, matching the language of the question — reply in Hindi/Hinglish when asked in Hindi.</div>
+                    </div>
+
+                    <div class="form-group vertical">
+                        <label class="form-label">Instant Answers</label>
+                        <label class="toggle-row">
+                            <input
+                                class="toggle-input"
+                                type="checkbox"
+                                .checked=${this.speculativePrefetch}
+                                @change=${this.handlePrefetchChange}
+                            />
+                            <span class="toggle-label">Pre-generate likely answers</span>
+                            <span class="switch"></span>
+                        </label>
+                        <div class="field-hint">Predicts the likely next questions and generates their answers in the background, so matching questions get an instant answer. Uses ~1 extra background call per turn.</div>
                     </div>
                 </div>
             </section>

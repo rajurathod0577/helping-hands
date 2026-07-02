@@ -45,6 +45,9 @@ const DEFAULT_PREFERENCES = {
     speechmaticsEouTrigger: 1.5,
     // Answer style: 'bullets' (fast, concise, scannable) or 'detailed'
     answerFormat: 'bullets',
+    // Speculative prefetch: pre-generate answers for likely next questions in the background
+    // so matching questions get an instant answer. Adds ~1 background call per turn.
+    speculativePrefetch: true,
     // Desi mode: reply in natural Hinglish, mirroring the speaker's language
     desiMode: false,
     // Candidate résumé text — injected so the AI can answer background questions instantly

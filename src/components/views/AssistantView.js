@@ -357,6 +357,19 @@ export class AssistantView extends LitElement {
             font-style: italic;
         }
 
+        /* Interviewee ("You") panel — distinct edge/label so the two streams read apart. */
+        .live-transcript.interviewee {
+            margin-top: 6px;
+            border-left-color: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+        }
+        .live-transcript.interviewee:not(.waiting) .live-transcript-label {
+            color: var(--text-secondary);
+        }
+        .live-transcript.interviewee:not(.waiting) .live-dot {
+            background: var(--text-secondary);
+            box-shadow: 0 0 8px var(--text-secondary);
+        }
+
         /* Progress banner shown while an answer is being generated (Analyze / Chat) */
         .answer-progress {
             display: flex;
@@ -771,6 +784,8 @@ export class AssistantView extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         liveTranscript: { type: String },
+        liveTranscriptInterviewee: { type: String },
+        showInterviewee: { type: Boolean },
         selectedProfile: { type: String },
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
@@ -788,6 +803,8 @@ export class AssistantView extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.liveTranscript = '';
+        this.liveTranscriptInterviewee = '';
+        this.showInterviewee = false;
         this.selectedProfile = 'interview';
         this.onSendText = () => {};
         this.backgroundTransparency = 0.8;
@@ -1234,6 +1251,7 @@ export class AssistantView extends LitElement {
 
     render() {
         const transcript = (this.liveTranscript || '').trim();
+        const intervieweeTranscript = (this.liveTranscriptInterviewee || '').trim();
 
         return html`
             <div class="live-transcript ${transcript ? '' : 'waiting'}" title="What the interviewer is saying (live)">
@@ -1243,6 +1261,18 @@ export class AssistantView extends LitElement {
                 </span>
                 <span class="live-transcript-text">${transcript || 'Waiting for speech…'}</span>
             </div>
+
+            ${this.showInterviewee
+                ? html`
+                      <div class="live-transcript interviewee ${intervieweeTranscript ? '' : 'waiting'}" title="What you (the interviewee) are saying (live)">
+                          <span class="live-transcript-label">
+                              <span class="live-dot"></span>
+                              // You · Live
+                          </span>
+                          <span class="live-transcript-text">${intervieweeTranscript || 'Waiting for you…'}</span>
+                      </div>
+                  `
+                : ''}
 
             <div class="answer-toolbar" role="toolbar" aria-label="Answer panel controls">
                 <div class="at-left">
