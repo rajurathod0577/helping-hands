@@ -204,7 +204,7 @@ Provide direct exam answers in **markdown format**. Include the question text, t
 // Optional answer-style modifiers appended at the end of the system prompt so they take
 // precedence over the profile defaults. Driven by user preferences.
 //   options.answerFormat: 'bullets' → short, fast, bulleted answers; 'detailed' → default
-//   options.desiMode: true → natural Indian-English phrasing
+//   options.desiMode: true → match the interviewer's language per-question (English→English, Hindi/Hinglish→Hinglish)
 function buildAnswerModifiers(options = {}) {
     const parts = [];
 
@@ -219,9 +219,14 @@ function buildAnswerModifiers(options = {}) {
 
     if (options.desiMode) {
         parts.push(
-            'Speak the way a confident Indian candidate naturally speaks English: simple, direct, conversational ' +
-                'Indian-English phrasing rather than textbook or overly formal language. Keep it authentic and relatable, ' +
-                'using examples familiar in the Indian context where it helps. Stay professional — do not overdo slang.'
+            'DESI MODE — MATCH THE INTERVIEWER\'S LANGUAGE (this rule overrides any default). ' +
+                'Detect the language of the CURRENT question and answer in that same language, regardless of what language earlier answers used: ' +
+                '(1) If the current question is in plain English, you MUST answer entirely in English — a warm, natural Indian-English tone, but NO Hindi/Hinglish words. Never answer an English question in Hinglish. ' +
+                '(2) Only if the current question is actually in Hindi or Hinglish, answer in natural Hinglish (the Hindi-English code-mix Indians speak), writing Hindi words in Roman script ' +
+                '(e.g. "haan bilkul", "main yeh handle kar leta hoon", "aap batao") while keeping technical terms, tools, and key nouns in English. ' +
+                'Judge each question on its own — do not carry Hinglish over from a previous answer if the interviewer has switched back to English. ' +
+                'For casual/small-talk questions (e.g. "how are you", "kaise ho aap"), reply briefly and naturally like a real person — ' +
+                'do NOT launch into a résumé pitch. Stay confident, friendly and interview-appropriate; authentic, not exaggerated slang.'
         );
     }
 
@@ -237,7 +242,25 @@ function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled =
         sections.push('\n\n', promptParts.searchUsage);
     }
 
-    sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n', promptParts.outputInstructions);
+    sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n');
+
+    // Candidate résumé — so background/personal questions get answered instantly and specifically.
+    if (options.resume && options.resume.trim()) {
+        sections.push(
+            "Candidate résumé (this is YOU — the interviewee you are answering as)\n-----\n",
+            options.resume.trim(),
+            '\n-----\n',
+            'When the interviewer asks a GENUINE question about the candidate — background, experience, ' +
+                'projects, skills, education, "tell me about yourself", "walk me through your résumé", ' +
+                '"why this role" — answer IMMEDIATELY and in the first person, using concrete specifics ' +
+                'from the résumé above (companies, roles, tech, achievements). Do not make up facts not in the résumé. ' +
+                'But do NOT recite résumé facts for greetings, small talk, meta/off-topic remarks, or reactive/ ' +
+                'conversational questions (e.g. "how are you", "are you reading this from somewhere", "are you cheating"). ' +
+                'For those, reply briefly and naturally like a real person and do not list credentials.\n\n'
+        );
+    }
+
+    sections.push(promptParts.outputInstructions);
 
     const modifiers = buildAnswerModifiers(options);
     if (modifiers) sections.push(modifiers);

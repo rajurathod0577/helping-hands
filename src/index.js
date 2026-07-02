@@ -19,6 +19,17 @@ app.whenReady().then(async () => {
     // Initialize storage (checks version, resets if needed)
     storage.initializeStorage();
 
+    // App identity — show our logo as the macOS dock icon (in dev the bundle
+    // otherwise shows Electron's default; packaged builds use logo.icns).
+    app.setName('Helping Hands');
+    if (process.platform === 'darwin' && app.dock) {
+        try {
+            app.dock.setIcon(require('path').join(__dirname, 'assets/logo.png'));
+        } catch (e) {
+            console.warn('Could not set dock icon:', e.message);
+        }
+    }
+
     // Trigger screen recording permission prompt on macOS if not already granted
     if (process.platform === 'darwin') {
         const { desktopCapturer } = require('electron');
@@ -388,6 +399,41 @@ function setupGeneralIpcHandlers() {
             return { success: true };
         } catch (error) {
             console.error('Error opening external URL:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Pick a résumé file and extract its text (PDF / TXT / MD) for use as interview context.
+    ipcMain.handle('attach-resume-file', async () => {
+        try {
+            const { dialog } = require('electron');
+            const fs = require('fs');
+            const path = require('path');
+            const result = await dialog.showOpenDialog({
+                title: 'Attach résumé',
+                properties: ['openFile'],
+                filters: [{ name: 'Résumé', extensions: ['pdf', 'txt', 'md', 'markdown'] }],
+            });
+            if (result.canceled || !result.filePaths.length) {
+                return { success: false, canceled: true };
+            }
+            const filePath = result.filePaths[0];
+            const ext = path.extname(filePath).toLowerCase();
+            let text = '';
+            if (ext === '.pdf') {
+                const pdfParse = require('pdf-parse');
+                const data = await pdfParse(fs.readFileSync(filePath));
+                text = data.text || '';
+            } else {
+                text = fs.readFileSync(filePath, 'utf8');
+            }
+            text = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+            if (!text) {
+                return { success: false, error: 'No readable text found in that file.' };
+            }
+            return { success: true, text, name: path.basename(filePath) };
+        } catch (error) {
+            console.error('Error attaching résumé:', error);
             return { success: false, error: error.message };
         }
     });

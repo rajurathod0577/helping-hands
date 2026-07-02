@@ -5,20 +5,112 @@ export class CustomizeView extends LitElement {
     static styles = [
         unifiedPageStyles,
         css`
-            .danger-surface {
-                border-color: var(--danger);
+            /* Section eyebrows (SESSION / APPEARANCE / group headers) */
+            .surface-title {
+                font-family: var(--font-mono);
+                font-size: 11px;
+                font-weight: 500;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                color: var(--text-muted);
+                margin-bottom: var(--space-md);
             }
 
+            /* HUD readout tick */
+            .surface-title::before {
+                content: '▸ ';
+                color: var(--accent);
+            }
+
+            .surface-title.danger {
+                color: var(--danger);
+            }
+
+            .surface-title.danger::before {
+                color: var(--danger);
+            }
+
+            /* Settings rows — sharp HUD rows with left accent tick */
+            .form-group {
+                position: relative;
+                background: var(--bg-elevated);
+                border: 1px solid var(--border);
+                border-radius: 0;
+                padding: 12px;
+                transition:
+                    border-color var(--transition),
+                    background var(--transition);
+            }
+
+            .form-group::before {
+                content: '';
+                position: absolute;
+                top: -1px;
+                left: -1px;
+                bottom: -1px;
+                width: 2px;
+                background: var(--accent);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity var(--transition);
+            }
+
+            .form-group:hover {
+                border-color: var(--border-strong);
+            }
+
+            .form-group:hover::before,
+            .form-group:focus-within::before {
+                opacity: 1;
+            }
+
+            .form-group.vertical .control {
+                width: 100%;
+            }
+
+            .form-label {
+                color: var(--text-secondary);
+                font-size: 13px;
+            }
+
+            /* Inputs & selects — kit styling + focus ring */
+            .control {
+                font-family: var(--font-mono);
+                background: var(--bg-surface);
+            }
+
+            .control:hover:not(:focus) {
+                border-color: var(--border-strong);
+            }
+
+            .control:focus {
+                outline: none;
+                border-color: var(--border-strong);
+                box-shadow:
+                    inset 0 0 0 1px var(--accent),
+                    0 0 0 3px rgba(59, 232, 107, 0.06);
+            }
+
+            select.control {
+                color: var(--text-primary);
+                font-size: 13px;
+            }
+
+            .danger-surface {
+                border-color: rgba(255, 92, 87, 0.3);
+            }
+
+            /* Warning callout (caution tint) */
             .warning-callout {
                 position: relative;
                 margin-top: 4px;
-                padding: 8px 12px;
-                border: 1px solid var(--danger);
-                border-radius: var(--radius-sm);
-                color: var(--danger);
+                padding: 10px 12px;
+                border: 1px solid rgba(224, 201, 58, 0.3);
+                border-radius: 0;
+                color: var(--warning);
                 font-size: var(--font-size-xs);
                 line-height: 1.4;
-                background: rgba(239, 68, 68, 0.06);
+                background: rgba(224, 201, 58, 0.1);
             }
 
             .warning-callout::before {
@@ -28,34 +120,79 @@ export class CustomizeView extends LitElement {
                 left: 16px;
                 width: 10px;
                 height: 10px;
-                background: var(--bg-surface);
-                border-top: 1px solid var(--danger);
-                border-left: 1px solid var(--danger);
+                background: var(--bg-elevated);
+                border-top: 1px solid rgba(224, 201, 58, 0.3);
+                border-left: 1px solid rgba(224, 201, 58, 0.3);
                 transform: rotate(45deg);
             }
 
+            /* Toggle / switch */
             .toggle-row {
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
-                padding: var(--space-sm);
-                border: 1px solid var(--border);
-                border-radius: var(--radius-sm);
-                background: var(--bg-elevated);
+                cursor: pointer;
+                user-select: none;
             }
 
             .toggle-input {
-                width: 14px;
-                height: 14px;
-                accent-color: var(--text-primary);
-                cursor: pointer;
+                appearance: none;
+                -webkit-appearance: none;
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                opacity: 0;
+                margin: 0;
             }
 
             .toggle-label {
-                color: var(--text-primary);
-                font-size: var(--font-size-sm);
+                flex: 1;
+                color: var(--text-secondary);
+                font-size: 13px;
                 cursor: pointer;
-                user-select: none;
+            }
+
+            .switch {
+                position: relative;
+                flex-shrink: 0;
+                width: 42px;
+                height: 24px;
+                border-radius: 0;
+                background: var(--bg-elevated);
+                border: 1px solid var(--border);
+                transition:
+                    background var(--transition),
+                    box-shadow var(--transition),
+                    border-color var(--transition);
+            }
+
+            .switch::after {
+                content: '';
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 18px;
+                height: 18px;
+                border-radius: 0;
+                background: var(--text-muted);
+                transition:
+                    transform var(--transition),
+                    background var(--transition);
+            }
+
+            .toggle-input:checked ~ .switch {
+                background: var(--accent-gradient);
+                border-color: transparent;
+                box-shadow: var(--shadow-accent);
+            }
+
+            .toggle-input:checked ~ .switch::after {
+                transform: translateX(18px);
+                background: #04140a;
+            }
+
+            .toggle-input:focus-visible ~ .switch {
+                box-shadow: 0 0 0 3px rgba(59, 232, 107, 0.06);
             }
 
             .field-hint {
@@ -65,11 +202,12 @@ export class CustomizeView extends LitElement {
                 line-height: 1.4;
             }
 
+            /* Slider */
             .slider-wrap {
                 display: flex;
                 flex-direction: column;
                 align-items: stretch;
-                gap: var(--space-xs);
+                gap: var(--space-sm);
             }
 
             .slider-header {
@@ -81,23 +219,25 @@ export class CustomizeView extends LitElement {
 
             .slider-value {
                 font-family: var(--font-mono);
-                font-size: var(--font-size-xs);
-                color: var(--text-secondary);
-                background: var(--bg-elevated);
-                border: 1px solid var(--border);
-                border-radius: var(--radius-sm);
-                padding: 2px 8px;
+                font-size: 12px;
+                color: var(--accent);
             }
 
             .slider-input {
                 -webkit-appearance: none;
                 appearance: none;
                 width: 100%;
-                height: 4px;
-                border-radius: 2px;
-                background: var(--border);
+                height: 6px;
+                border-radius: 0;
+                background: var(--bg-elevated);
                 outline: none;
                 cursor: pointer;
+            }
+
+            .slider-input::-webkit-slider-runnable-track {
+                height: 6px;
+                border-radius: 0;
+                background: var(--bg-elevated);
             }
 
             .slider-input::-webkit-slider-thumb {
@@ -105,79 +245,169 @@ export class CustomizeView extends LitElement {
                 appearance: none;
                 width: 14px;
                 height: 14px;
-                border-radius: 50%;
-                background: var(--text-primary);
-                border: none;
+                margin-top: -4px;
+                border-radius: 0;
+                background: var(--accent);
+                border: 1px solid var(--accent);
+                box-shadow: var(--shadow-accent);
+            }
+
+            .slider-input::-moz-range-track {
+                height: 6px;
+                border-radius: 0;
+                background: var(--bg-elevated);
+            }
+
+            .slider-input::-moz-range-progress {
+                height: 6px;
+                border-radius: 0;
+                background: linear-gradient(90deg, #12a24a, var(--accent));
             }
 
             .slider-input::-moz-range-thumb {
                 width: 14px;
                 height: 14px;
-                border-radius: 50%;
-                background: var(--text-primary);
-                border: none;
+                border: 1px solid var(--accent);
+                border-radius: 0;
+                background: var(--accent);
+                box-shadow: var(--shadow-accent);
             }
 
+            /* Keyboard shortcut rows */
             .keybind-row {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: var(--space-sm) 0;
-                border-bottom: 1px solid var(--border);
-            }
-
-            .keybind-row:last-of-type {
-                border-bottom: none;
+                gap: var(--space-md);
+                padding: 10px 12px;
+                margin-bottom: var(--space-xs);
+                background: var(--bg-elevated);
+                border: 1px solid var(--border);
+                border-radius: 0;
             }
 
             .keybind-name {
                 color: var(--text-secondary);
-                font-size: var(--font-size-sm);
+                font-size: 13px;
             }
 
             .keybind-input {
-                width: 140px;
+                width: 150px;
                 text-align: center;
                 font-family: var(--font-mono);
-                font-size: var(--font-size-xs);
+                font-size: 11px;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--accent);
+                background: var(--bg-surface);
+                border: 1px solid var(--border-strong);
+                border-bottom-width: 2px;
+                border-radius: 0;
+                padding: 6px 9px;
             }
 
-            .danger-button {
-                border: 1px solid var(--danger);
-                color: var(--danger);
-                background: transparent;
-                border-radius: var(--radius-sm);
-                padding: 9px 12px;
-                font-size: var(--font-size-sm);
+            /* Buttons — HUD mono uppercase */
+            .btn {
+                font-family: var(--font-mono);
+                font-size: 13px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                border-radius: 0;
+                padding: 11px 20px;
                 cursor: pointer;
-                transition: background var(--transition);
+                border: 1px solid transparent;
+                transition:
+                    border-color var(--transition),
+                    background var(--transition),
+                    box-shadow var(--transition),
+                    filter var(--transition);
             }
 
-            .danger-button:hover {
-                background: rgba(241, 76, 76, 0.11);
-            }
-
-            .danger-button:disabled {
+            .btn:disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
+            }
+
+            .btn-primary {
+                background: var(--accent-gradient);
+                color: #04140a;
+                border: none;
+                /* chamfer clip hides box-shadow — use drop-shadow for glow */
+                clip-path: polygon(
+                    0 0,
+                    calc(100% - var(--hud-cut-sm, 6px)) 0,
+                    100% var(--hud-cut-sm, 6px),
+                    100% 100%,
+                    var(--hud-cut-sm, 6px) 100%,
+                    0 calc(100% - var(--hud-cut-sm, 6px))
+                );
+                filter: drop-shadow(0 0 10px rgba(59, 232, 107, 0.5));
+            }
+
+            .btn-primary:hover:not(:disabled) {
+                filter: drop-shadow(0 0 14px rgba(59, 232, 107, 0.7));
+            }
+
+            .btn-secondary {
+                background: transparent;
+                border: 1px solid var(--border-strong);
+                color: var(--accent);
+            }
+
+            .btn-secondary:hover:not(:disabled) {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 1px var(--accent) inset;
+            }
+
+            .btn-ghost {
+                background: var(--bg-elevated);
+                border: 1px solid var(--border);
+                color: var(--text-secondary);
+            }
+
+            .btn-ghost:hover:not(:disabled) {
+                border-color: var(--border-strong);
+            }
+
+            .btn-danger {
+                background: rgba(255, 92, 87, 0.08);
+                border: 1px solid rgba(255, 92, 87, 0.3);
+                color: var(--danger);
+            }
+
+            .btn-danger:hover:not(:disabled) {
+                background: rgba(255, 92, 87, 0.14);
             }
 
             .status {
                 margin-top: var(--space-sm);
                 padding: var(--space-sm);
-                border-radius: var(--radius-sm);
+                border-radius: 0;
                 border: 1px solid var(--border);
+                font-family: var(--font-mono);
                 font-size: var(--font-size-xs);
+                letter-spacing: 0.04em;
             }
 
             .status.success {
-                border-color: var(--success);
-                color: var(--success);
+                border-color: rgba(59, 232, 107, 0.3);
+                color: var(--accent);
+                background: var(--accent-soft);
+            }
+
+            .status.success::before {
+                content: '● ';
             }
 
             .status.error {
-                border-color: var(--danger);
+                border-color: rgba(255, 92, 87, 0.3);
                 color: var(--danger);
+                background: rgba(255, 92, 87, 0.08);
+            }
+
+            .status.error::before {
+                content: '✕ ';
             }
         `,
     ];
@@ -725,7 +955,7 @@ export class CustomizeView extends LitElement {
             <section class="surface">
                 <div class="surface-title">Answer Style</div>
                 <div class="form-grid">
-                    <div class="form-group">
+                    <div class="form-group vertical">
                         <label class="form-label">Response Format</label>
                         <select class="control" .value=${this.answerFormat} @change=${this.handleAnswerFormatChange}>
                             <option value="bullets">Concise bullet points (fast)</option>
@@ -733,7 +963,7 @@ export class CustomizeView extends LitElement {
                         </select>
                         <div class="field-hint">Bullets give short, scannable answers you can read at a glance during a live call.</div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group vertical">
                         <label class="form-label">Desi Mode</label>
                         <label class="toggle-row">
                             <input
@@ -742,9 +972,10 @@ export class CustomizeView extends LitElement {
                                 .checked=${this.desiMode}
                                 @change=${this.handleDesiModeChange}
                             />
-                            <span class="toggle-label">Natural Indian-English phrasing</span>
+                            <span class="toggle-label">Reply in Hinglish</span>
+                            <span class="switch"></span>
                         </label>
-                        <div class="field-hint">Answers sound like a confident Indian candidate speaking — not textbook English.</div>
+                        <div class="field-hint">Answers come back in natural Hinglish, matching the language of the question — reply in Hindi/Hinglish when asked in Hindi.</div>
                     </div>
                 </div>
             </section>
@@ -834,7 +1065,7 @@ export class CustomizeView extends LitElement {
                     `
                 )}
                 <div style="margin-top: var(--space-sm);">
-                    <button class="control" style="width:auto;padding:8px 10px;" @click=${this.resetKeybinds}>Reset to defaults</button>
+                    <button class="btn btn-ghost" style="padding:8px 14px;" @click=${this.resetKeybinds}>Reset to defaults</button>
                 </div>
             </section>
         `;
@@ -887,7 +1118,7 @@ export class CustomizeView extends LitElement {
                     </div>
                     ${showOpenRouter
                         ? html`
-                              <div class="form-group">
+                              <div class="form-group vertical">
                                   <label class="form-label">OpenRouter Model</label>
                                   <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-bottom: 4px;">
                                       Selected: <span style="color: var(--text-primary);">${this._openrouterModel}</span>
@@ -935,8 +1166,8 @@ export class CustomizeView extends LitElement {
                                                                       </div>
                                                                   </div>
                                                                   <button
-                                                                      class="control"
-                                                                      style="width: auto; padding: 2px 8px; font-size: var(--font-size-xs); margin-left: 8px; flex-shrink: 0;"
+                                                                      class="btn btn-ghost"
+                                                                      style="width: auto; padding: 4px 10px; font-size: var(--font-size-xs); margin-left: 8px; flex-shrink: 0;"
                                                                       @click=${e => {
                                                                           e.stopPropagation();
                                                                           this.testOpenRouterModel(m.id);
@@ -983,10 +1214,10 @@ export class CustomizeView extends LitElement {
             <section class="surface danger-surface">
                 <div class="surface-title danger">Privacy and Data</div>
                 <div style="display:flex;gap:var(--space-sm);flex-wrap:wrap;">
-                    <button class="danger-button" @click=${this.restoreAllSettings} ?disabled=${this.isRestoring}>
+                    <button class="btn btn-secondary" @click=${this.restoreAllSettings} ?disabled=${this.isRestoring}>
                         ${this.isRestoring ? 'Restoring...' : 'Restore all settings'}
                     </button>
-                    <button class="danger-button" @click=${this.clearLocalData} ?disabled=${this.isClearing}>
+                    <button class="btn btn-danger" @click=${this.clearLocalData} ?disabled=${this.isClearing}>
                         ${this.isClearing ? 'Clearing...' : 'Delete all data'}
                     </button>
                 </div>

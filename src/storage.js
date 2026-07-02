@@ -21,7 +21,7 @@ const DEFAULT_CREDENTIALS = {
 
 const DEFAULT_PREFERENCES = {
     customPrompt: '',
-    providerMode: 'byok',
+    providerMode: 'api',
     providerConfig: {
         audio: 'speechmatics',
         text: 'groq',
@@ -45,8 +45,10 @@ const DEFAULT_PREFERENCES = {
     speechmaticsEouTrigger: 1.5,
     // Answer style: 'bullets' (fast, concise, scannable) or 'detailed'
     answerFormat: 'bullets',
-    // Desi mode: natural Indian-English phrasing in answers
+    // Desi mode: reply in natural Hinglish, mirroring the speaker's language
     desiMode: false,
+    // Candidate résumé text — injected so the AI can answer background questions instantly
+    resume: '',
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults
@@ -467,6 +469,8 @@ function saveSession(sessionId, data) {
         // Conversation data
         conversationHistory: data.conversationHistory || existingSession?.conversationHistory || [],
         screenAnalysisHistory: data.screenAnalysisHistory || existingSession?.screenAnalysisHistory || [],
+        // Estimated API cost for the session (written once when the session ends)
+        cost: data.cost || existingSession?.cost || null,
     };
     return writeJsonFile(sessionPath, sessionData);
 }
@@ -506,6 +510,7 @@ function getAllSessions() {
                         screenAnalysisCount: data.screenAnalysisHistory?.length || 0,
                         profile: data.profile || null,
                         customPrompt: data.customPrompt || null,
+                        cost: data.cost || null,
                     };
                 }
                 return null;

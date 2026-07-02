@@ -16,19 +16,117 @@ export class AssistantView extends LitElement {
             cursor: default;
         }
 
-        /* ── Response area (glass card) ── */
+        /* ── Answer card (kit "Floating live assistant" answer surface) ── */
+
+        .answer-card {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            /* Alpha-carrying tokens so the answer overlay honors the Settings
+               "Background Transparency" slider (was a fixed 0.94 gradient). */
+            background: linear-gradient(180deg, var(--bg-elevated), var(--bg-surface));
+            border: 1px solid var(--border-strong);
+            border-radius: 0;
+            box-shadow: var(--shadow-accent), 0 20px 50px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        /* CRT scanline overlay — faint, non-interactive, sits beneath the content (z-index 2) */
+        .answer-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            background: repeating-linear-gradient(0deg, rgba(59, 232, 107, 0.05) 0 1px, transparent 1px 3px);
+        }
+
+        /* HUD corner bracket — bottom-right */
+        .answer-card::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 12px;
+            height: 12px;
+            border: 1px solid var(--accent);
+            border-left: none;
+            border-top: none;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .answer-card-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 2;
+            padding: 12px 16px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* HUD corner bracket — top-left (anchored to the card's top-left corner) */
+        .answer-card-head::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 12px;
+            height: 12px;
+            border: 1px solid var(--accent);
+            border-right: none;
+            border-bottom: none;
+            pointer-events: none;
+        }
+
+        .answer-card-mark {
+            width: 20px;
+            height: 20px;
+            border-radius: 0;
+            flex-shrink: 0;
+            /* Angular chamfer + phosphor glow (clip-path hides box-shadow, so glow via drop-shadow) */
+            clip-path: polygon(
+                0 0,
+                calc(100% - var(--hud-cut-sm)) 0,
+                100% var(--hud-cut-sm),
+                100% 100%,
+                var(--hud-cut-sm) 100%,
+                0 calc(100% - var(--hud-cut-sm))
+            );
+            filter: drop-shadow(0 0 6px rgba(59, 232, 107, 0.5));
+        }
+
+        .answer-card-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: var(--font-weight-medium, 500);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            text-shadow: 0 0 8px rgba(59, 232, 107, 0.35);
+        }
+
+        /* HUD readout tick before the wordmark */
+        .answer-card-eyebrow::before {
+            content: '▸ ';
+            color: var(--accent);
+        }
+
+        /* ── Response body (scrolls inside the answer card) ── */
 
         .response-container {
             flex: 1;
+            min-height: 0;
+            position: relative;
+            z-index: 2;
             overflow-y: auto;
             font-size: var(--response-font-size, 15px);
             line-height: var(--line-height);
-            background: var(--bg-surface);
-            backdrop-filter: blur(18px) saturate(1.15);
-            -webkit-backdrop-filter: blur(18px) saturate(1.15);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+            background: transparent;
             padding: var(--space-md) var(--space-md);
             scroll-behavior: smooth;
             user-select: text;
@@ -105,24 +203,33 @@ export class AssistantView extends LitElement {
 
         .response-container code {
             background: var(--bg-elevated);
+            border: 1px solid var(--border);
             padding: 0.15em 0.4em;
             border-radius: var(--radius-sm);
             font-family: var(--font-mono);
             font-size: 0.85em;
         }
 
+        /* HUD code block — sharp mono panel with a thin accent top tick */
         .response-container pre {
-            background: var(--bg-surface);
+            background: #040806;
             border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: var(--space-md);
+            border-top: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+            border-radius: 0;
+            padding: 14px 16px;
             overflow-x: auto;
             margin: 0.8em 0;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.7;
         }
 
         .response-container pre code {
             background: none;
+            border: none;
             padding: 0;
+            font-size: 12px;
+            line-height: 1.7;
         }
 
         .code-block-wrapper {
@@ -175,15 +282,21 @@ export class AssistantView extends LitElement {
             align-items: flex-start;
             gap: 10px;
             flex-shrink: 0;
-            padding: 9px 14px;
+            padding: 12px 14px;
             background: var(--bg-surface);
             backdrop-filter: blur(18px) saturate(1.15);
             -webkit-backdrop-filter: blur(18px) saturate(1.15);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.24);
+            border: 1px solid var(--border-strong);
+            border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+            border-radius: 0;
             max-height: 4.8em;
             overflow-y: auto;
+        }
+
+        /* Idle transcript: cool the HUD accent edge down to a neutral hairline */
+        .live-transcript.waiting {
+            border-color: var(--border);
+            border-left-color: var(--border);
         }
 
         .live-transcript-label {
@@ -191,10 +304,10 @@ export class AssistantView extends LitElement {
             align-items: center;
             gap: 6px;
             flex-shrink: 0;
-            font-size: 0.66rem;
-            font-weight: var(--font-weight-semibold);
+            font-family: var(--font-mono);
+            font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.08em;
             color: var(--accent);
             padding-top: 2px;
         }
@@ -221,8 +334,8 @@ export class AssistantView extends LitElement {
         }
 
         .live-transcript-text {
-            font-size: 0.88rem;
-            line-height: 1.45;
+            font-size: 13px;
+            line-height: 1.55;
             color: var(--text-secondary);
         }
 
@@ -253,7 +366,7 @@ export class AssistantView extends LitElement {
             padding: 9px 14px;
             background: var(--accent-soft);
             border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-            border-radius: 12px;
+            border-radius: 0;
             font-size: 0.84rem;
             color: var(--text-primary);
         }
@@ -325,11 +438,139 @@ export class AssistantView extends LitElement {
 
         .response-container::-webkit-scrollbar-thumb {
             background: var(--border-strong);
-            border-radius: 3px;
+            border-radius: 0;
         }
 
         .response-container::-webkit-scrollbar-thumb:hover {
             background: #444444;
+        }
+
+        /* ── Answer-panel toolbar (separate from the top menu bar) ── */
+
+        .answer-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 10px;
+            margin-bottom: 8px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            -webkit-app-region: no-drag;
+        }
+
+        .at-left {
+            flex: 1 1 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .at-opacity-label {
+            font-size: var(--font-size-xs);
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        .at-opacity {
+            width: 96px;
+            max-width: 40%;
+            accent-color: var(--accent);
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+
+        .at-opacity-val {
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+            min-width: 34px;
+        }
+
+        .at-center {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .at-nav {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: var(--bg-app);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+
+        .at-nav:not(:disabled):hover {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .at-nav:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        .at-nav svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .at-page {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+            min-width: 46px;
+            text-align: center;
+        }
+
+        .at-right {
+            flex: 1 1 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+        }
+
+        .at-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+
+        .at-icon:hover:not(:disabled) {
+            color: var(--text-primary);
+            border-color: var(--border-strong);
+        }
+
+        .at-icon:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        .at-icon.at-danger:hover:not(:disabled) {
+            color: var(--error-color);
+            border-color: var(--error-color);
+        }
+
+        .at-icon svg {
+            width: 15px;
+            height: 15px;
         }
 
         /* ── Response navigation strip ── */
@@ -414,11 +655,12 @@ export class AssistantView extends LitElement {
             border-color: var(--border-strong);
         }
 
-        /* On = following latest: accent-tinted with a subtle bounce hint */
+        /* On = following latest: accent-tinted with a phosphor HUD glow */
         .autoscroll-btn.on {
             color: var(--accent);
             background: var(--accent-soft);
             border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+            box-shadow: var(--shadow-accent);
         }
 
         .input-bar-inner {
@@ -427,7 +669,7 @@ export class AssistantView extends LitElement {
             flex: 1;
             background: var(--bg-elevated);
             border: 1px solid var(--border);
-            border-radius: 100px;
+            border-radius: 0;
             padding: 0 var(--space-md);
             height: 32px;
             transition: border-color var(--transition);
@@ -435,6 +677,16 @@ export class AssistantView extends LitElement {
 
         .input-bar-inner:focus-within {
             border-color: var(--accent);
+            box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(59, 232, 107, 0.06);
+        }
+
+        .input-prompt {
+            flex-shrink: 0;
+            margin-right: 6px;
+            font-family: var(--font-mono);
+            font-size: var(--font-size-sm);
+            color: var(--accent);
+            user-select: none;
         }
 
         .input-bar-inner input {
@@ -453,31 +705,39 @@ export class AssistantView extends LitElement {
             color: var(--text-muted);
         }
 
+        /* Primary-tinted HUD "analyze" action. Shape left sharp/rectangular on purpose:
+           the analyze-canvas traces its particle perimeter from geometry (r = height / 2),
+           so no clip-path chamfer here — restyle colors/type only. */
         .analyze-btn {
             position: relative;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
+            background: var(--accent-soft);
+            border: 1px solid var(--border-strong);
+            color: var(--accent);
             cursor: pointer;
             font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-medium, 500);
             font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             white-space: nowrap;
             padding: var(--space-xs) var(--space-md);
-            border-radius: 100px;
+            border-radius: 0;
             height: 32px;
             display: flex;
             align-items: center;
             gap: 4px;
             transition:
                 border-color 0.4s ease,
-                background var(--transition);
+                background var(--transition),
+                box-shadow var(--transition);
             flex-shrink: 0;
             overflow: hidden;
         }
 
         .analyze-btn:hover:not(.analyzing) {
             border-color: var(--accent);
-            background: var(--bg-surface);
+            background: color-mix(in srgb, var(--accent) 18%, transparent);
+            box-shadow: var(--shadow-accent);
         }
 
         .analyze-btn.analyzing {
@@ -514,6 +774,10 @@ export class AssistantView extends LitElement {
         selectedProfile: { type: String },
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
+        backgroundTransparency: { type: Number },
+        onOpacityChange: { type: Function },
+        onClose: { type: Function },
+        onClear: { type: Function },
         isAnalyzing: { type: Boolean, state: true },
         _pendingQuestion: { type: String, state: true },
         autoScroll: { type: Boolean, state: true },
@@ -526,6 +790,10 @@ export class AssistantView extends LitElement {
         this.liveTranscript = '';
         this.selectedProfile = 'interview';
         this.onSendText = () => {};
+        this.backgroundTransparency = 0.8;
+        this.onOpacityChange = () => {};
+        this.onClose = () => {};
+        this.onClear = () => {};
         this.isAnalyzing = false;
         this._pendingQuestion = ''; // chat question awaiting an answer (for the progress banner)
         this._pendingCountStart = 0;
@@ -965,16 +1233,67 @@ export class AssistantView extends LitElement {
     }
 
     render() {
-        const hasMultipleResponses = this.responses.length > 1;
         const transcript = (this.liveTranscript || '').trim();
 
         return html`
             <div class="live-transcript ${transcript ? '' : 'waiting'}" title="What the interviewer is saying (live)">
                 <span class="live-transcript-label">
                     <span class="live-dot"></span>
-                    Live
+                    // Interviewer · Live
                 </span>
                 <span class="live-transcript-text">${transcript || 'Waiting for speech…'}</span>
+            </div>
+
+            <div class="answer-toolbar" role="toolbar" aria-label="Answer panel controls">
+                <div class="at-left">
+                    <span class="at-opacity-label">Opacity</span>
+                    <input
+                        class="at-opacity"
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        .value=${this.backgroundTransparency}
+                        @input=${e => this.onOpacityChange(parseFloat(e.target.value))}
+                        aria-label="Overlay opacity"
+                    />
+                    <span class="at-opacity-val">${Math.round((this.backgroundTransparency || 0) * 100)}%</span>
+                </div>
+                <div class="at-center">
+                    <button
+                        class="at-nav"
+                        @click=${this.navigateToPreviousResponse}
+                        ?disabled=${this.currentResponseIndex <= 0}
+                        aria-label="Previous response"
+                        title="Previous response"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+                    </button>
+                    <span class="at-page">${this.responses.length ? this.currentResponseIndex + 1 : 0} / ${this.responses.length}</span>
+                    <button
+                        class="at-nav"
+                        @click=${this.navigateToNextResponse}
+                        ?disabled=${this.currentResponseIndex >= this.responses.length - 1}
+                        aria-label="Next response"
+                        title="Next response"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+                    </button>
+                </div>
+                <div class="at-right">
+                    <button
+                        class="at-icon at-danger"
+                        @click=${() => this.onClear()}
+                        ?disabled=${!this.responses.length}
+                        aria-label="Clear answers"
+                        title="Clear answers"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6" /></svg>
+                    </button>
+                    <button class="at-icon" @click=${() => this.onClose()} aria-label="Close session" title="Close">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                </div>
             </div>
 
             ${this.isAnalyzing
@@ -993,43 +1312,13 @@ export class AssistantView extends LitElement {
                       `
                   : ''}
 
-            <div class="response-container" id="responseContainer"></div>
-
-            ${hasMultipleResponses
-                ? html`
-                      <div class="response-nav">
-                          <button
-                              class="nav-btn"
-                              @click=${this.navigateToPreviousResponse}
-                              ?disabled=${this.currentResponseIndex <= 0}
-                              title="Previous response"
-                          >
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                  <path
-                                      fill-rule="evenodd"
-                                      d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z"
-                                      clip-rule="evenodd"
-                                  />
-                              </svg>
-                          </button>
-                          <span class="response-counter">${this.currentResponseIndex + 1} of ${this.responses.length}</span>
-                          <button
-                              class="nav-btn"
-                              @click=${this.navigateToNextResponse}
-                              ?disabled=${this.currentResponseIndex >= this.responses.length - 1}
-                              title="Next response"
-                          >
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                  <path
-                                      fill-rule="evenodd"
-                                      d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z"
-                                      clip-rule="evenodd"
-                                  />
-                              </svg>
-                          </button>
-                      </div>
-                  `
-                : ''}
+            <div class="answer-card">
+                <div class="answer-card-head">
+                    <img class="answer-card-mark" src="assets/logo.png" alt="Helping Hands" />
+                    <span class="answer-card-eyebrow">Helping Hands</span>
+                </div>
+                <div class="response-container" id="responseContainer"></div>
+            </div>
 
             <div class="input-bar">
                 <button
@@ -1044,6 +1333,7 @@ export class AssistantView extends LitElement {
                     </svg>
                 </button>
                 <div class="input-bar-inner">
+                    <span class="input-prompt" aria-hidden="true">›</span>
                     <input type="text" id="textInput" placeholder="Type a message..." @keydown=${this.handleTextKeydown} />
                 </div>
                 <button class="analyze-btn ${this.isAnalyzing ? 'analyzing' : ''}" @click=${this.handleScreenAnswer}>

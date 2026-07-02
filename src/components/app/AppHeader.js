@@ -19,6 +19,7 @@ export class AppHeader extends LitElement {
 
         .header-title {
             flex: 1;
+            font-family: var(--font-display);
             font-size: var(--header-font-size);
             font-weight: 500;
             color: var(--text-primary);
@@ -42,7 +43,7 @@ export class AppHeader extends LitElement {
             color: var(--text-primary);
             border: 1px solid var(--border);
             padding: var(--header-button-padding);
-            border-radius: 3px;
+            border-radius: 0;
             font-size: var(--header-font-size-small);
             font-weight: 500;
             transition: background 0.1s ease;
@@ -57,7 +58,7 @@ export class AppHeader extends LitElement {
             color: var(--text-secondary);
             border: none;
             padding: var(--header-icon-padding);
-            border-radius: 3px;
+            border-radius: 0;
             font-size: var(--header-font-size-small);
             font-weight: 500;
             display: flex;
@@ -84,7 +85,7 @@ export class AppHeader extends LitElement {
         .key {
             background: var(--key-background);
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: 0;
             font-size: 11px;
             font-family: var(--font-mono);
         }
@@ -94,7 +95,7 @@ export class AppHeader extends LitElement {
             color: var(--text-muted);
             background: var(--key-background);
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: 0;
             font-family: var(--font-mono);
         }
 
@@ -103,7 +104,7 @@ export class AppHeader extends LitElement {
             color: #f14c4c;
             border: 1px solid #f14c4c;
             padding: var(--header-button-padding);
-            border-radius: 3px;
+            border-radius: 0;
             font-size: var(--header-font-size-small);
             font-weight: 500;
             display: flex;

@@ -10,6 +10,8 @@ export class MainView extends LitElement {
         }
 
         :host {
+            position: relative;
+            overflow: hidden;
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -18,12 +20,52 @@ export class MainView extends LitElement {
             padding: var(--space-xl) var(--space-lg);
         }
 
+        /* Signature matrix code-rain backdrop */
+        .code-rain {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
         .form-wrapper {
+            position: relative;
+            z-index: 1;
             width: 100%;
             max-width: 420px;
             display: flex;
             flex-direction: column;
             gap: var(--space-md);
+        }
+
+        /* Faint HUD console frame — L-brackets at opposite corners */
+        .form-wrapper::before,
+        .form-wrapper::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border: 1px solid var(--accent);
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .form-wrapper::before {
+            top: -12px;
+            left: -12px;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .form-wrapper::after {
+            right: -12px;
+            bottom: -12px;
+            border-left: none;
+            border-top: none;
         }
 
         .brand-hero {
@@ -36,19 +78,29 @@ export class MainView extends LitElement {
         .brand-mark-lg {
             width: 44px;
             height: 44px;
-            border-radius: 13px;
-            background: var(--accent-gradient);
-            box-shadow: var(--shadow-accent);
+            border-radius: 0;
+            /* clip-path clips box-shadow, so glow lives on a drop-shadow filter */
+            filter: drop-shadow(0 0 10px rgba(59, 232, 107, 0.5));
+            clip-path: polygon(
+                0 0,
+                calc(100% - var(--hud-cut)) 0,
+                100% var(--hud-cut),
+                100% 100%,
+                var(--hud-cut) 100%,
+                0 calc(100% - var(--hud-cut))
+            );
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
         }
 
-        .brand-mark-lg svg {
-            width: 24px;
-            height: 24px;
-            color: #fff;
+        .brand-mark-lg img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
         }
 
         .brand-hero-text {
@@ -57,19 +109,25 @@ export class MainView extends LitElement {
         }
 
         .page-title {
+            font-family: var(--font-display);
             font-size: var(--font-size-2xl);
             font-weight: var(--font-weight-semibold);
             color: var(--text-primary);
-            letter-spacing: -0.02em;
+            letter-spacing: -0.01em;
+            text-shadow: 0 0 8px rgba(59, 232, 107, 0.35);
         }
 
         .page-title .mode-suffix {
+            font-family: var(--font-mono);
             font-size: var(--font-size-sm);
             font-weight: var(--font-weight-medium);
             color: var(--accent);
             background: var(--accent-soft);
+            border: 1px solid var(--border-strong);
             padding: 2px 8px;
-            border-radius: var(--radius-pill);
+            border-radius: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             vertical-align: middle;
             margin-left: 4px;
         }
@@ -153,11 +211,18 @@ export class MainView extends LitElement {
         }
 
         .form-label {
-            font-size: var(--font-size-xs);
+            font-family: var(--font-mono);
+            font-size: 11px;
             font-weight: var(--font-weight-medium);
-            color: var(--text-secondary);
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.1em;
+        }
+
+        /* HUD readout prefix */
+        .form-label::before {
+            content: '// ';
+            color: var(--accent);
         }
 
         input,
@@ -170,7 +235,7 @@ export class MainView extends LitElement {
             width: 100%;
             border-radius: var(--radius-md);
             font-size: var(--font-size-sm);
-            font-family: var(--font);
+            font-family: var(--font-mono);
             transition:
                 border-color var(--transition),
                 box-shadow var(--transition);
@@ -186,8 +251,8 @@ export class MainView extends LitElement {
         select:focus,
         textarea:focus {
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-soft);
+            border-color: var(--border-strong);
+            box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(59, 232, 107, 0.06);
         }
 
         input::placeholder,
@@ -258,20 +323,33 @@ export class MainView extends LitElement {
             position: relative;
             overflow: hidden;
             background: var(--accent-gradient);
-            color: #ffffff;
+            color: #04140a;
             border: none;
-            padding: 14px var(--space-md);
-            border-radius: var(--radius-md);
-            font-size: var(--font-size-base);
-            font-weight: var(--font-weight-semibold);
+            padding: 13px var(--space-md);
+            border-radius: 0;
+            /* angular sci-fi chamfer (top-right + bottom-left) */
+            clip-path: polygon(
+                0 0,
+                calc(100% - var(--hud-cut)) 0,
+                100% var(--hud-cut),
+                100% 100%,
+                var(--hud-cut) 100%,
+                0 calc(100% - var(--hud-cut))
+            );
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: var(--font-weight-medium);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             cursor: pointer;
             width: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: var(--space-sm);
-            box-shadow: var(--shadow-accent);
-            transition: transform var(--transition), box-shadow var(--transition), opacity var(--transition);
+            /* clip-path clips box-shadow, so glow lives on a drop-shadow filter */
+            filter: drop-shadow(0 0 10px rgba(59, 232, 107, 0.5));
+            transition: transform var(--transition), filter var(--transition), opacity var(--transition);
         }
 
         .start-button canvas.btn-aurora {
@@ -304,7 +382,7 @@ export class MainView extends LitElement {
 
         .start-button:hover {
             transform: translateY(-1px);
-            box-shadow: 0 12px 30px rgba(109, 94, 248, 0.45);
+            filter: drop-shadow(0 0 16px rgba(37, 227, 92, 0.6));
         }
 
         .start-button:active {
@@ -330,15 +408,15 @@ export class MainView extends LitElement {
 
         .start-button.is-starting:hover {
             transform: none;
-            box-shadow: var(--shadow-accent);
+            filter: drop-shadow(0 0 10px rgba(59, 232, 107, 0.5));
         }
 
         .start-spinner {
             display: inline-block;
             width: 14px;
             height: 14px;
-            border: 2px solid rgba(255, 255, 255, 0.35);
-            border-top-color: #ffffff;
+            border: 2px solid rgba(4, 20, 10, 0.35);
+            border-top-color: #04140a;
             border-radius: 50%;
             animation: whisper-spin 0.7s linear infinite;
         }
@@ -346,9 +424,14 @@ export class MainView extends LitElement {
         .shortcut-hint {
             display: inline-flex;
             align-items: center;
-            gap: 2px;
-            opacity: 0.5;
+            gap: 3px;
             font-family: var(--font-mono);
+            font-size: 11px;
+            color: #04140a;
+            background: rgba(4, 20, 10, 0.22);
+            border: 1px solid rgba(4, 20, 10, 0.35);
+            padding: 2px 6px;
+            border-radius: 0;
         }
 
         /* ── Divider ── */
@@ -402,18 +485,44 @@ export class MainView extends LitElement {
         }
 
         .mode-card {
+            position: relative;
             flex: 1;
             display: flex;
             flex-direction: column;
             gap: 4px;
             padding: 12px 14px;
-            border-radius: var(--radius-md);
+            border-radius: 0;
             border: 1px solid var(--border);
             background: var(--bg-elevated);
             cursor: pointer;
             transition:
                 border-color 0.2s,
                 background 0.2s;
+        }
+
+        /* HUD corner brackets */
+        .mode-card::before,
+        .mode-card::after {
+            content: '';
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border: 1px solid var(--accent);
+            pointer-events: none;
+        }
+
+        .mode-card::before {
+            top: -1px;
+            left: -1px;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .mode-card::after {
+            right: -1px;
+            bottom: -1px;
+            border-left: none;
+            border-top: none;
         }
 
         .mode-card:hover {
@@ -598,7 +707,7 @@ export class MainView extends LitElement {
         this.isInitializing = false;
         this.whisperDownloading = false;
 
-        this._mode = 'byok';
+        this._mode = 'api';
         this._token = '';
         this._geminiKey = '';
         this._groqKey = '';
@@ -618,6 +727,9 @@ export class MainView extends LitElement {
         this._mouseX = -1;
         this._mouseY = -1;
 
+        this._rainAnimId = null;
+        this.boundRainResize = null;
+
         this.boundKeydownHandler = this._handleKeydown.bind(this);
         this._loadFromStorage();
     }
@@ -629,10 +741,11 @@ export class MainView extends LitElement {
                 helpingHands.storage.getCredentials().catch(() => ({})),
             ]);
 
-            const storedMode = prefs.providerMode || 'byok';
-            this._mode = storedMode === 'cloud' ? 'byok' : storedMode;
+            const storedMode = prefs.providerMode || 'api';
+            // Normalize legacy modes ('cloud'/'byok') to 'api'
+            this._mode = storedMode === 'cloud' || storedMode === 'byok' ? 'api' : storedMode;
 
-            if (storedMode === 'cloud') {
+            if (storedMode === 'cloud' || storedMode === 'byok') {
                 await helpingHands.storage.updatePreference('providerMode', this._mode);
             }
 
@@ -665,6 +778,90 @@ export class MainView extends LitElement {
         super.disconnectedCallback();
         document.removeEventListener('keydown', this.boundKeydownHandler);
         if (this._animId) cancelAnimationFrame(this._animId);
+        if (this._rainAnimId) cancelAnimationFrame(this._rainAnimId);
+        if (this.boundRainResize) window.removeEventListener('resize', this.boundRainResize);
+    }
+
+    firstUpdated(changedProperties) {
+        super.firstUpdated(changedProperties);
+        this.initRain();
+    }
+
+    // Signature matrix code-rain backdrop (additive, non-interactive).
+    initRain() {
+        const canvas = this.shadowRoot.querySelector('canvas.code-rain');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const charset = 'アカサタナﾊﾋﾌﾍﾎ0123456789ABCDEF<>/{}[]=;:';
+        const fontSize = 15;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const reduceMotion =
+            typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        let logicalW = 0;
+        let logicalH = 0;
+        let columns = 0;
+        let drops = [];
+
+        const glyph = () => charset[Math.floor(Math.random() * charset.length)];
+
+        const resize = () => {
+            logicalW = this.offsetWidth || window.innerWidth;
+            logicalH = this.offsetHeight || window.innerHeight;
+            canvas.width = Math.floor(logicalW * dpr);
+            canvas.height = Math.floor(logicalH * dpr);
+            // Resetting canvas.width clears transform/state, so re-apply them.
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.font = fontSize + "px 'JetBrains Mono', monospace";
+            ctx.textBaseline = 'top';
+            columns = Math.max(1, Math.floor(logicalW / fontSize));
+            drops = new Array(columns).fill(0).map(() => Math.random() * -60);
+        };
+        resize();
+
+        if (reduceMotion) {
+            // Static, faint field instead of animating.
+            ctx.fillStyle = 'rgba(6,10,7,0.55)';
+            ctx.fillRect(0, 0, logicalW, logicalH);
+            ctx.font = fontSize + "px 'JetBrains Mono', monospace";
+            ctx.fillStyle = 'rgba(59,232,107,0.35)';
+            for (let i = 0; i < columns; i++) {
+                if (Math.random() > 0.4) continue;
+                ctx.fillText(glyph(), i * fontSize, Math.random() * logicalH);
+            }
+            return;
+        }
+
+        const draw = () => {
+            ctx.fillStyle = 'rgba(6,10,7,0.09)';
+            ctx.fillRect(0, 0, logicalW, logicalH);
+            ctx.font = fontSize + "px 'JetBrains Mono', monospace";
+
+            for (let i = 0; i < columns; i++) {
+                const x = i * fontSize;
+                const y = drops[i] * fontSize;
+
+                ctx.fillStyle = 'rgba(190,255,210,0.92)';
+                ctx.fillText(glyph(), x, y);
+                ctx.fillStyle = 'rgba(59,232,107,0.5)';
+                ctx.fillText(glyph(), x, y - fontSize);
+                ctx.fillStyle = 'rgba(31,143,69,0.35)';
+                ctx.fillText(glyph(), x, y - fontSize * 2);
+
+                if (y > logicalH && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i] += 0.55;
+            }
+
+            this._rainAnimId = requestAnimationFrame(draw);
+        };
+        draw();
+
+        this.boundRainResize = resize;
+        window.addEventListener('resize', resize);
     }
 
     updated(changedProperties) {
@@ -721,11 +918,11 @@ export class MainView extends LitElement {
         aurora.height = Math.floor(aurora.offsetHeight * scale);
 
         const blobs = [
-            { color: [120, 160, 230], x: 0.1, y: 0.3, vx: 0.25, vy: 0.2, phase: 0 },
-            { color: [150, 120, 220], x: 0.8, y: 0.5, vx: -0.2, vy: 0.25, phase: 1.5 },
-            { color: [200, 140, 210], x: 0.5, y: 0.6, vx: 0.18, vy: -0.22, phase: 3.0 },
-            { color: [100, 190, 190], x: 0.3, y: 0.7, vx: 0.3, vy: 0.15, phase: 4.5 },
-            { color: [220, 170, 130], x: 0.7, y: 0.4, vx: -0.22, vy: -0.25, phase: 6.0 },
+            { color: [45, 255, 110], x: 0.1, y: 0.3, vx: 0.25, vy: 0.2, phase: 0 },
+            { color: [20, 200, 130], x: 0.8, y: 0.5, vx: -0.2, vy: 0.25, phase: 1.5 },
+            { color: [130, 255, 150], x: 0.5, y: 0.6, vx: 0.18, vy: -0.22, phase: 3.0 },
+            { color: [40, 230, 190], x: 0.3, y: 0.7, vx: 0.3, vy: 0.15, phase: 4.5 },
+            { color: [160, 245, 90], x: 0.7, y: 0.4, vx: -0.22, vy: -0.25, phase: 6.0 },
         ];
 
         const draw = () => {
@@ -734,7 +931,7 @@ export class MainView extends LitElement {
             const h = aurora.height;
             const maxDim = Math.max(w, h);
 
-            ctx.fillStyle = '#f0f0f0';
+            ctx.fillStyle = '#0a1c10';
             ctx.fillRect(0, 0, w, h);
 
             const hovering = this._mouseX >= 0;
@@ -867,7 +1064,7 @@ export class MainView extends LitElement {
     async _handleStart() {
         if (this.isInitializing) return; // guard against repeated clicks
 
-        if (this._mode === 'byok') {
+        if (this._mode === 'api') {
             if (!this._geminiKey.trim()) {
                 this._keyError = true;
                 this.requestUpdate();
@@ -985,9 +1182,9 @@ export class MainView extends LitElement {
     // Cloud UI intentionally disabled. Backend cloud wiring is still present in
     // the codebase, but the renderer no longer exposes this setup path.
 
-    // ── BYOK mode ──
+    // ── Hosted AI (API key) mode ──
 
-    _renderByokMode() {
+    _renderApiMode() {
         return html`
             <div class="form-group">
                 <label class="form-label">Gemini API Key</label>
@@ -1086,7 +1283,7 @@ export class MainView extends LitElement {
                 <div class="form-hint">
                     Run
                     <code
-                        style="font-family: var(--font-mono); font-size: 11px; background: var(--bg-elevated); padding: 1px 4px; border-radius: 3px;"
+                        style="font-family: var(--font-mono); font-size: 11px; background: var(--bg-elevated); padding: 1px 4px; border-radius: 0;"
                         >ollama pull ${this._ollamaModel}</code
                     >
                     first
@@ -1116,7 +1313,7 @@ export class MainView extends LitElement {
             <!-- Cloud promo intentionally removed from the active UI. -->
 
             <div class="mode-links">
-                <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
+                <button class="mode-link" @click=${() => this._saveMode('api')}>Use Hosted AI</button>
             </div>
         `;
     }
@@ -1135,18 +1332,17 @@ export class MainView extends LitElement {
         </svg>`;
 
         const brandMark = html`<span class="brand-mark-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2v6m0 0 3-2m-3 2L9 6M5 12H2m20 0h-3M7 17l-2 2m12-2 2 2M12 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
-            </svg>
+            <img src="assets/logo.png" alt="Helping Hands" />
         </span>`;
 
         return html`
+            <canvas class="code-rain"></canvas>
             <div class="form-wrapper">
                 <div class="brand-hero">
                     ${brandMark}
                     <div class="brand-hero-text">
-                        <div class="page-title">Helping Hands <span class="mode-suffix">${this._mode === 'local' ? 'Local AI' : 'BYOK'}</span></div>
-                        <div class="page-subtitle">${this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}</div>
+                        <div class="page-title">Helping Hands${this._mode === 'local' ? html` <span class="mode-suffix">Local AI</span>` : ''}</div>
+                        <div class="page-subtitle">${this._mode === 'local' ? 'Run models locally on your machine' : 'Hosted AI providers'}</div>
                     </div>
                     ${this._mode === 'local'
                         ? html`
@@ -1163,7 +1359,7 @@ export class MainView extends LitElement {
                 </div>
 
                 <!-- Cloud mode render branch intentionally disabled. -->
-                ${this._mode === 'byok' ? this._renderByokMode() : ''}
+                ${this._mode === 'api' ? this._renderApiMode() : ''}
                 ${this._mode === 'local' ? (this._showLocalHelp ? this._renderLocalHelp() : this._renderLocalMode()) : ''}
             </div>
         `;
@@ -1232,7 +1428,7 @@ export class MainView extends LitElement {
                     <div class="help-section-title">Computer hanging or slow?</div>
                     <div class="help-section-text">
                         Running models locally uses a lot of RAM and CPU. If your computer slows down or freezes, it's likely the LLM. Switch back to
-                        BYOK mode if you want to use a hosted provider instead.
+                        Hosted AI if you want to use a hosted provider instead.
                     </div>
                 </div>
 
@@ -1240,10 +1436,10 @@ export class MainView extends LitElement {
                     class="help-cloud-btn"
                     @click=${() => {
                         this._showLocalHelp = false;
-                        this._saveMode('byok');
+                        this._saveMode('api');
                     }}
                 >
-                    Switch to BYOK
+                    Switch to Hosted AI
                 </button>
             </div>
         `;

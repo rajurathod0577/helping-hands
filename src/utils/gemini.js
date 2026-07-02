@@ -14,8 +14,10 @@ const {
     getModelForToday,
     getProviderConfig,
     getPreferences,
+    saveSession,
 } = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
+const { computeCost } = require('./pricing');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
 let _localai = null;
@@ -31,8 +33,8 @@ function getSpeechmatics() {
     return _speechmatics;
 }
 
-// Provider mode: 'byok', 'cloud', or 'local'
-let currentProviderMode = 'byok';
+// Provider mode: 'api' (hosted providers via API keys), 'cloud', 'local', or 'speechmatics'
+let currentProviderMode = 'api';
 
 // Groq conversation history for context
 let groqConversationHistory = [];
@@ -46,6 +48,175 @@ let currentProfile = null;
 let currentCustomPrompt = null;
 let isInitializingSession = false;
 let currentSystemPrompt = null;
+
+// ── Per-session API usage / cost tracking ──────────────────────────────────
+// Accumulates token usage (reported by each provider) and audio duration for the
+// active session, so we can show an estimated cost when the session ends. Reset
+// on every new session via resetSessionUsage().
+let sessionUsage = createEmptyUsage();
+
+function createEmptyUsage() {
+    return {
+        startedAt: null, // ms epoch when the session (audio) began
+        text: {}, // `${provider}/${model}` -> { provider, model, inputTokens, outputTokens, cachedInputTokens, requests, exactCostUSD? }
+        audioProvider: null, // 'speechmatics' | 'gemini' | null
+        estimated: false, // true if any tokens were estimated from characters
+        deepseekStartBalance: null, // { currency: amount } snapshot for the balance-delta reconciliation
+    };
+}
+
+function resetSessionUsage() {
+    sessionUsage = createEmptyUsage();
+    sessionUsage.startedAt = Date.now();
+}
+
+function markAudioProvider(provider) {
+    if (!sessionUsage.startedAt) sessionUsage.startedAt = Date.now();
+    sessionUsage.audioProvider = provider;
+}
+
+// Fold one text-generation response into the running usage. `usage` is the provider's
+// own usage object (OpenAI-compatible: prompt_tokens/completion_tokens, plus DeepSeek's
+// prompt_cache_hit_tokens). `fallback` supplies char counts so we can estimate tokens
+// (~4 chars/token) when a provider doesn't report usage.
+function recordTextUsage(provider, model, usage, fallback) {
+    if (!sessionUsage.startedAt) sessionUsage.startedAt = Date.now();
+
+    let inTok;
+    let outTok;
+    let cachedTok = 0;
+    const hasUsage = usage && (usage.prompt_tokens != null || usage.completion_tokens != null);
+    if (hasUsage) {
+        inTok = usage.prompt_tokens || 0;
+        outTok = usage.completion_tokens || 0;
+        cachedTok = usage.prompt_cache_hit_tokens || usage.prompt_tokens_details?.cached_tokens || 0;
+    } else {
+        inTok = Math.round((fallback?.inputChars || 0) / 4);
+        outTok = Math.round((fallback?.outputChars || 0) / 4);
+        sessionUsage.estimated = true;
+    }
+
+    const key = `${provider}/${model}`;
+    const entry = sessionUsage.text[key] || { provider, model, inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, requests: 0 };
+    entry.inputTokens += inTok;
+    entry.outputTokens += outTok;
+    entry.cachedInputTokens += cachedTok;
+    entry.requests += 1;
+    // OpenRouter reports the exact per-request cost (in credits = USD) when usage.include
+    // is set — prefer that over rate math when present.
+    if (usage && typeof usage.cost === 'number') {
+        entry.exactCostUSD = (entry.exactCostUSD || 0) + usage.cost;
+    }
+    sessionUsage.text[key] = entry;
+
+    emitLiveCost();
+}
+
+// Snapshot the current usage into a computed cost object. For Speechmatics the audio
+// duration is exact (byte-counted from the PCM stream); otherwise fall back to wall-clock.
+function computeSessionCost(extra = {}) {
+    let audioSeconds = 0;
+    if (sessionUsage.audioProvider === 'speechmatics') {
+        try {
+            audioSeconds = getSpeechmatics().getAudioSeconds();
+        } catch (e) {
+            audioSeconds = 0;
+        }
+    } else if (sessionUsage.startedAt) {
+        audioSeconds = (Date.now() - sessionUsage.startedAt) / 1000;
+    }
+    return computeCost({
+        text: sessionUsage.text,
+        audioProvider: sessionUsage.audioProvider,
+        audioSeconds,
+        estimated: sessionUsage.estimated,
+        actualCharged: extra.actualCharged || null,
+    });
+}
+
+// Push a running cost snapshot to the UI (for the live counter).
+function emitLiveCost() {
+    try {
+        sendToRenderer('update-cost', computeSessionCost());
+    } catch (e) {
+        // non-fatal
+    }
+}
+
+// ── DeepSeek balance reconciliation ──
+// DeepSeek exposes the account balance, so (balance before − balance after) = the exact
+// money this session cost. We snapshot the balance at session start and re-read it at the
+// end. All best-effort: any failure just omits the "actually charged" figure.
+async function fetchDeepSeekBalance() {
+    try {
+        const key = getDeepSeekApiKey();
+        if (!key) return null;
+        // Never let a slow/hung balance call block session start or the End button.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
+        let res;
+        try {
+            res = await fetch('https://api.deepseek.com/user/balance', {
+                headers: { Authorization: `Bearer ${key}` },
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!res.ok) return null;
+        const j = await res.json();
+        const map = {};
+        for (const info of j.balance_infos || []) {
+            const amt = parseFloat(info.total_balance);
+            if (!Number.isNaN(amt)) map[info.currency] = amt;
+        }
+        return Object.keys(map).length ? map : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function snapshotDeepSeekStartBalance() {
+    let usesDeepSeek = false;
+    try {
+        usesDeepSeek = getProviderConfig().text === 'deepseek';
+    } catch (e) {
+        usesDeepSeek = false;
+    }
+    if (!usesDeepSeek) return;
+    fetchDeepSeekBalance()
+        .then(b => {
+            if (b) sessionUsage.deepseekStartBalance = b;
+        })
+        .catch(() => {});
+}
+
+async function computeActualCharged() {
+    const start = sessionUsage.deepseekStartBalance;
+    if (!start) return null;
+    const end = await fetchDeepSeekBalance();
+    if (!end) return null;
+    for (const cur of Object.keys(start)) {
+        const delta = (start[cur] || 0) - (end[cur] || 0);
+        if (delta > 1e-7) return { amount: delta, currency: cur };
+    }
+    return { amount: 0, currency: Object.keys(start)[0] || 'USD' };
+}
+
+// Called when a session ends: reconcile against the DeepSeek balance, snapshot the final
+// cost, persist it onto the session's saved history record, and return it for the card.
+async function finalizeSessionCost() {
+    const actualCharged = await computeActualCharged();
+    const cost = computeSessionCost({ actualCharged });
+    if (currentSessionId) {
+        try {
+            saveSession(currentSessionId, { cost });
+        } catch (e) {
+            console.error('Failed to persist session cost:', e.message);
+        }
+    }
+    return cost;
+}
 
 function formatSpeakerResults(results) {
     let text = '';
@@ -99,6 +270,8 @@ function initializeNewSession(profile = null, customPrompt = null) {
     groqConversationHistory = [];
     currentProfile = profile;
     currentCustomPrompt = customPrompt;
+    resetSessionUsage();
+    snapshotDeepSeekStartBalance(); // for the exact balance-delta reconciliation at session end
     console.log('New conversation session started:', currentSessionId, 'profile:', profile);
 
     // Save initial session with profile context
@@ -281,25 +454,46 @@ async function sendToGroq(transcription) {
     }
 
     try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${groqApiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: modelToUse,
-                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
-                stream: true,
-                temperature: 0.7,
-                max_tokens: 1024,
-            }),
-        });
+        const doFetch = () =>
+            fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${groqApiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: modelToUse,
+                    messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
+                    stream: true,
+                    stream_options: { include_usage: true },
+                    temperature: 0.7,
+                    max_tokens: 1024,
+                }),
+            });
+
+        let response = await doFetch();
+
+        // On a rate limit (429), wait the server-suggested delay and retry once.
+        if (response.status === 429) {
+            const errorText = await response.text();
+            const headerRetry = parseFloat(response.headers.get('retry-after'));
+            const bodyRetry = parseFloat((errorText.match(/try again in ([\d.]+)s/) || [])[1]);
+            const waitMs = Math.min(Math.ceil(headerRetry || bodyRetry || 5) * 1000, 15000);
+            console.warn(`Groq 429 rate limit — retrying in ${waitMs}ms`);
+            sendToRenderer('update-status', `Rate limit — retrying in ${Math.ceil(waitMs / 1000)}s…`);
+            await new Promise(r => setTimeout(r, waitMs));
+            response = await doFetch();
+        }
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error('Groq API error:', response.status, errorText);
-            sendToRenderer('update-status', `Groq error: ${response.status}`);
+            sendToRenderer(
+                'update-status',
+                response.status === 429
+                    ? 'Groq rate limit reached — wait a moment or upgrade your Groq tier'
+                    : `Groq error: ${response.status}`
+            );
             return;
         }
 
@@ -307,6 +501,7 @@ async function sendToGroq(transcription) {
         const decoder = new TextDecoder();
         let fullText = '';
         let isFirst = true;
+        let usageInfo = null;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -322,6 +517,7 @@ async function sendToGroq(transcription) {
 
                     try {
                         const json = JSON.parse(data);
+                        if (json.usage) usageInfo = json.usage;
                         const token = json.choices?.[0]?.delta?.content || '';
                         if (token) {
                             fullText += token;
@@ -347,6 +543,7 @@ async function sendToGroq(transcription) {
         const outputChars = cleanedResponse.length;
 
         incrementCharUsage('groq', modelKey, inputChars + outputChars);
+        recordTextUsage('groq', modelKey, usageInfo, { inputChars, outputChars });
 
         if (cleanedResponse) {
             groqConversationHistory.push({
@@ -424,6 +621,8 @@ async function sendToGemma(transcription) {
         const outputChars = fullText.length;
 
         incrementCharUsage('gemini', 'gemma-4-26b-a4b-it', inputChars + outputChars);
+        // Gemma runs on the free tier ($0) — record token estimate so the live counter still works.
+        recordTextUsage('gemini', 'gemma', null, { inputChars, outputChars });
 
         if (fullText.trim()) {
             groqConversationHistory.push({
@@ -483,6 +682,8 @@ async function sendToOpenRouter(transcription, model) {
                 model: modelToUse,
                 messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
                 stream: true,
+                stream_options: { include_usage: true },
+                usage: { include: true }, // OpenRouter returns the exact per-request cost in the usage chunk
                 temperature: 0.7,
                 max_tokens: 1024,
             }),
@@ -499,6 +700,7 @@ async function sendToOpenRouter(transcription, model) {
         const decoder = new TextDecoder();
         let fullText = '';
         let isFirst = true;
+        let usageInfo = null;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -514,6 +716,7 @@ async function sendToOpenRouter(transcription, model) {
 
                     try {
                         const json = JSON.parse(data);
+                        if (json.usage) usageInfo = json.usage;
                         const token = json.choices?.[0]?.delta?.content || '';
                         if (token) {
                             fullText += token;
@@ -531,6 +734,10 @@ async function sendToOpenRouter(transcription, model) {
         }
 
         const cleanedResponse = stripThinkingTags(fullText);
+
+        const orSystemChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
+        const orHistoryChars = groqConversationHistory.reduce((sum, msg) => sum + (msg.content || '').length, 0);
+        recordTextUsage('openrouter', modelToUse, usageInfo, { inputChars: orSystemChars + orHistoryChars, outputChars: cleanedResponse.length });
 
         if (cleanedResponse) {
             groqConversationHistory.push({
@@ -584,6 +791,7 @@ async function sendToDeepSeek(transcription) {
                 model: modelToUse,
                 messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
                 stream: true,
+                stream_options: { include_usage: true },
                 temperature: 0.7,
                 max_tokens: 1024,
             }),
@@ -600,6 +808,7 @@ async function sendToDeepSeek(transcription) {
         const decoder = new TextDecoder();
         let fullText = '';
         let isFirst = true;
+        let usageInfo = null;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -615,6 +824,7 @@ async function sendToDeepSeek(transcription) {
 
                     try {
                         const json = JSON.parse(data);
+                        if (json.usage) usageInfo = json.usage;
                         const token = json.choices?.[0]?.delta?.content || '';
                         if (token) {
                             fullText += token;
@@ -632,6 +842,10 @@ async function sendToDeepSeek(transcription) {
         }
 
         const cleanedResponse = stripThinkingTags(fullText);
+
+        const dsSystemChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
+        const dsHistoryChars = groqConversationHistory.reduce((sum, msg) => sum + (msg.content || '').length, 0);
+        recordTextUsage('deepseek', modelToUse, usageInfo, { inputChars: dsSystemChars + dsHistoryChars, outputChars: cleanedResponse.length });
 
         if (cleanedResponse) {
             groqConversationHistory.push({
@@ -707,6 +921,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, {
         answerFormat: stylePrefs.answerFormat,
         desiMode: stylePrefs.desiMode,
+        resume: stylePrefs.resume,
     });
     currentSystemPrompt = systemPrompt; // Store for Groq
 
@@ -1325,14 +1540,14 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             return true;
         } catch (err) {
             console.error('[Cloud] Init error:', err);
-            currentProviderMode = 'byok';
+            currentProviderMode = 'api';
             sendToRenderer('session-initializing', false);
             return false;
         }
     });
 
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
-        currentProviderMode = 'byok';
+        currentProviderMode = 'api';
         const session = await initializeGeminiSession(apiKey, customPrompt, profile, language);
         if (session) {
             geminiSessionRef.current = session;
@@ -1345,7 +1560,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         currentProviderMode = 'local';
         const success = await getLocalAi().initializeLocalSession(ollamaHost, ollamaModel, whisperModel, profile, customPrompt);
         if (!success) {
-            currentProviderMode = 'byok';
+            currentProviderMode = 'api';
         }
         return success;
     });
@@ -1362,6 +1577,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         currentSystemPrompt = getSystemPrompt(profile, customPrompt, false, {
             answerFormat: smStylePrefs.answerFormat,
             desiMode: smStylePrefs.desiMode,
+            resume: smStylePrefs.resume,
         });
         // If the text/image provider is Ollama, make sure its client is initialized.
         const smProviderConfig = getProviderConfig();
@@ -1372,10 +1588,13 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 prefs.ollamaModel || 'llama3.1'
             );
         }
+        // Speechmatics streams audio for the whole session — track it for cost estimation.
+        markAudioProvider('speechmatics');
+        emitLiveCost(); // show the live cost counter from the start (audio accrues immediately)
         const success = await getSpeechmatics().initSpeechmatics(apiKey, { language, profile, customPrompt });
         sendToRenderer('session-initializing', false);
         if (!success) {
-            currentProviderMode = 'byok';
+            currentProviderMode = 'api';
         }
         return success;
     });
@@ -1619,22 +1838,25 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         try {
             stopMacOSAudioCapture();
 
+            // Reconcile + persist the real cost before tearing anything down.
+            const cost = await finalizeSessionCost();
+
             if (currentProviderMode === 'cloud') {
                 closeCloud();
-                currentProviderMode = 'byok';
-                return { success: true };
+                currentProviderMode = 'api';
+                return { success: true, cost };
             }
 
             if (currentProviderMode === 'local') {
                 getLocalAi().closeLocalSession();
-                currentProviderMode = 'byok';
-                return { success: true };
+                currentProviderMode = 'api';
+                return { success: true, cost };
             }
 
             if (currentProviderMode === 'speechmatics') {
                 await getSpeechmatics().closeSpeechmatics();
-                currentProviderMode = 'byok';
-                return { success: true };
+                currentProviderMode = 'api';
+                return { success: true, cost };
             }
 
             // Set flag to prevent reconnection attempts
@@ -1647,7 +1869,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 geminiSessionRef.current = null;
             }
 
-            return { success: true };
+            return { success: true, cost };
         } catch (error) {
             console.error('Error closing session:', error);
             return { success: false, error: error.message };

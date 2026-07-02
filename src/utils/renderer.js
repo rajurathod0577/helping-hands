@@ -88,6 +88,11 @@ const storage = {
         return ipcRenderer.invoke('storage:set-speechmatics-api-key', speechmaticsApiKey);
     },
 
+    // Résumé attach (opens a file dialog in main, extracts text from PDF/TXT/MD)
+    async attachResumeFile() {
+        return ipcRenderer.invoke('attach-resume-file');
+    },
+
     // Preferences
     async getPreferences() {
         const result = await ipcRenderer.invoke('storage:get-preferences');
@@ -853,18 +858,18 @@ const helpingHandsApp = document.querySelector('helping-hands-app');
 const theme = {
     themes: {
         dark: {
-            background: '#0b0b0f',
-            text: '#f4f4f7',
-            textSecondary: '#a1a1ad',
-            textMuted: '#5c5c68',
-            border: 'rgba(255,255,255,0.08)', // → --border (subtle)
-            accent: 'rgba(255,255,255,0.16)', // → --border-strong (neutral, NOT the brand color)
-            btnPrimaryBg: '#6d5ef8', // → --accent (brand violet)
-            btnPrimaryText: '#ffffff',
-            btnPrimaryHover: '#7c6cff',
-            tooltipBg: '#1b1b22',
-            tooltipText: '#f4f4f7',
-            keyBg: 'rgba(109,94,248,0.16)',
+            background: '#060a07', // --bg (green-tinted near-black)
+            text: '#e8fbee', // --tx
+            textSecondary: '#8fb89c', // --tx2
+            textMuted: '#5a7563', // --tx3
+            border: 'rgba(74,240,130,0.14)', // --g-line → --border (subtle)
+            accent: 'rgba(74,240,130,0.26)', // --g-line2 → --border-strong (NOT the brand color)
+            btnPrimaryBg: '#3be86b', // --g → --accent (brand neon green)
+            btnPrimaryText: '#04140a', // dark text reads best on neon green
+            btnPrimaryHover: '#5cf088',
+            tooltipBg: '#121a15', // --elev
+            tooltipText: '#e8fbee',
+            keyBg: 'rgba(59,232,107,0.16)', // --g-soft-ish
         },
         light: {
             background: '#ffffff',
@@ -873,12 +878,12 @@ const theme = {
             textMuted: '#9292a0',
             border: 'rgba(0,0,0,0.10)',
             accent: 'rgba(0,0,0,0.16)',
-            btnPrimaryBg: '#6d5ef8',
+            btnPrimaryBg: '#0b7a34', // --g-deep (kit light-mode lockup green)
             btnPrimaryText: '#ffffff',
-            btnPrimaryHover: '#5b4fe0',
+            btnPrimaryHover: '#12a24a', // --g2
             tooltipBg: '#16161d',
             tooltipText: '#ffffff',
-            keyBg: 'rgba(109,94,248,0.12)',
+            keyBg: 'rgba(11,122,52,0.12)',
         },
         midnight: {
             background: '#0d1117',
@@ -988,7 +993,7 @@ const theme = {
 
     getAll() {
         const names = {
-            dark: 'Dark',
+            dark: 'Matrix',
             light: 'Light',
             midnight: 'Midnight Blue',
             sepia: 'Sepia',
@@ -1049,8 +1054,13 @@ const theme = {
         const bgElevated = `rgba(${tertiary.r}, ${tertiary.g}, ${tertiary.b}, ${alpha})`;
         const bgHover = `rgba(${hover.r}, ${hover.g}, ${hover.b}, ${alpha})`;
 
+        // Solid (fully opaque) variant — used for the non-live app shell (opening/home/
+        // settings) so those screens stay solid regardless of the overlay transparency.
+        const bgBaseSolid = `rgb(${baseRgb.r}, ${baseRgb.g}, ${baseRgb.b})`;
+
         // New design tokens (used by components)
         root.style.setProperty('--bg-app', bgBase);
+        root.style.setProperty('--bg-app-solid', bgBaseSolid);
         root.style.setProperty('--bg-surface', bgSurface);
         root.style.setProperty('--bg-elevated', bgElevated);
         root.style.setProperty('--bg-hover', bgHover);

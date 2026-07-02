@@ -8,12 +8,40 @@ export class FeedbackView extends LitElement {
         unifiedPageStyles,
         css`
             .feedback-embed {
+                position: relative;
                 width: 100%;
                 height: min(78vh, 900px);
-                border: 1px solid var(--border);
-                border-radius: var(--radius-md);
+                border: 1px solid var(--border-strong);
+                border-radius: 0;
                 background: var(--bg-elevated);
-                overflow: hidden;
+                box-shadow: 0 0 0 3px var(--accent-soft);
+            }
+
+            /* L-shaped HUD corner brackets framing the panel */
+            .feedback-embed::before,
+            .feedback-embed::after {
+                content: '';
+                position: absolute;
+                width: 14px;
+                height: 14px;
+                border: 1px solid var(--accent);
+                pointer-events: none;
+                z-index: 1;
+                opacity: 0.85;
+            }
+
+            .feedback-embed::before {
+                top: -1px;
+                left: -1px;
+                border-right: none;
+                border-bottom: none;
+            }
+
+            .feedback-embed::after {
+                right: -1px;
+                bottom: -1px;
+                border-left: none;
+                border-top: none;
             }
 
             .feedback-iframe {

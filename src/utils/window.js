@@ -38,6 +38,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         height: windowHeight,
         minWidth: MIN_WINDOW_SIZE.width,
         minHeight: MIN_WINDOW_SIZE.height,
+        icon: require('path').join(__dirname, '../assets/logo.png'),
         resizable: true,
         frame: false,
         transparent: true,

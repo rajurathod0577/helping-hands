@@ -28,10 +28,46 @@ export class OnboardingView extends LitElement {
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 12px;
-            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 0;
+            border: 1px solid var(--border-strong);
             overflow: hidden;
-            background: #f0f0f0;
+            background: var(--bg-app);
+        }
+
+        /* HUD corner brackets — top-left / bottom-right ticks framing the console */
+        .onboarding::before,
+        .onboarding::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border: 1px solid var(--accent);
+            pointer-events: none;
+            z-index: 3;
+            opacity: 0.7;
+        }
+
+        .onboarding::before {
+            top: 12px;
+            left: 12px;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .onboarding::after {
+            right: 12px;
+            bottom: 12px;
+            border-left: none;
+            border-top: none;
+        }
+
+        /* Faint CRT scanline overlay above the aurora/dither canvases, below content */
+        .scanlines {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            background: repeating-linear-gradient(0deg, rgba(59, 232, 107, 0.05) 0 1px, transparent 1px 3px);
         }
 
         canvas.aurora {
@@ -68,42 +104,61 @@ export class OnboardingView extends LitElement {
             gap: var(--space-md);
         }
 
+        .eyebrow {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        /* HUD readout prefix */
+        .eyebrow::before {
+            content: '// ';
+            color: var(--accent);
+        }
+
         .slide-title {
+            font-family: var(--font-display);
             font-size: 28px;
             font-weight: 600;
-            color: #111111;
-            line-height: 1.2;
+            color: var(--text-primary);
+            line-height: 1.1;
+            text-shadow: 0 0 8px rgba(59, 232, 107, 0.35);
         }
 
         .slide-text {
             font-size: 13px;
             line-height: 1.5;
-            color: #666666;
+            color: var(--text-secondary);
         }
 
         .context-input {
             width: 100%;
             min-height: 120px;
             padding: 12px;
-            border: 1px solid rgba(0, 0, 0, 0.12);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.7);
+            border: 1px solid var(--border);
+            border-radius: 0;
+            background: rgba(17, 26, 20, 0.6);
             backdrop-filter: blur(8px);
-            color: #111111;
+            color: var(--text-primary);
             font-size: 13px;
             font-family: var(--font);
             line-height: 1.5;
             resize: vertical;
             text-align: left;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
 
         .context-input::placeholder {
-            color: #999999;
+            color: var(--text-muted);
         }
 
         .context-input:focus {
             outline: none;
-            border-color: rgba(0, 0, 0, 0.3);
+            border-color: var(--border-strong);
+            box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px rgba(59, 232, 107, 0.06);
         }
 
         .actions {
@@ -115,32 +170,50 @@ export class OnboardingView extends LitElement {
         }
 
         .btn-primary {
-            background: #111111;
+            background: var(--accent-gradient);
             border: none;
-            color: #ffffff;
-            padding: 10px 32px;
-            border-radius: 8px;
+            color: #04140a;
+            padding: 11px 20px;
+            border-radius: 0;
+            font-family: var(--font-mono);
             font-size: 13px;
             font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             cursor: pointer;
-            transition: opacity 0.15s;
+            /* Angular chamfer — top-right + bottom-left cut */
+            clip-path: polygon(
+                0 0,
+                calc(100% - var(--hud-cut)) 0,
+                100% var(--hud-cut),
+                100% 100%,
+                var(--hud-cut) 100%,
+                0 calc(100% - var(--hud-cut))
+            );
+            /* clip-path hides box-shadow, so glow via drop-shadow */
+            filter: drop-shadow(0 0 10px rgba(59, 232, 107, 0.5));
+            transition: opacity 0.15s, filter 0.15s;
         }
 
         .btn-primary:hover {
-            opacity: 0.85;
+            opacity: 0.92;
+            filter: drop-shadow(0 0 16px rgba(59, 232, 107, 0.65));
         }
 
         .btn-back {
             background: none;
             border: none;
-            color: #888888;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
             font-size: 11px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
             cursor: pointer;
             padding: 4px 8px;
         }
 
         .btn-back:hover {
-            color: #555555;
+            color: var(--text-secondary);
         }
     `;
 
@@ -208,7 +281,7 @@ export class OnboardingView extends LitElement {
                     { ox: 0.22, oy: 0.1, r: 0.85 },
                     { ox: 0.11, oy: 0.05, r: 0.5 },
                 ],
-                color: [180, 200, 230],
+                color: [40, 200, 110],
                 x: 0.15,
                 y: 0.2,
                 vx: 0.35,
@@ -222,7 +295,7 @@ export class OnboardingView extends LitElement {
                     { ox: 0.18, oy: -0.08, r: 0.75 },
                     { ox: 0.09, oy: -0.04, r: 0.4 },
                 ],
-                color: [190, 180, 220],
+                color: [90, 230, 140],
                 x: 0.75,
                 y: 0.2,
                 vx: -0.3,
@@ -236,7 +309,7 @@ export class OnboardingView extends LitElement {
                     { ox: 0.24, oy: 0.12, r: 0.9 },
                     { ox: 0.12, oy: 0.06, r: 0.35 },
                 ],
-                color: [210, 195, 215],
+                color: [30, 180, 130],
                 x: 0.5,
                 y: 0.65,
                 vx: 0.25,
@@ -250,7 +323,7 @@ export class OnboardingView extends LitElement {
                     { ox: -0.15, oy: 0.18, r: 0.7 },
                     { ox: -0.07, oy: 0.09, r: 0.45 },
                 ],
-                color: [175, 210, 210],
+                color: [140, 245, 120],
                 x: 0.1,
                 y: 0.75,
                 vx: 0.4,
@@ -264,7 +337,7 @@ export class OnboardingView extends LitElement {
                     { ox: 0.12, oy: -0.15, r: 0.65 },
                     { ox: 0.06, oy: -0.07, r: 0.35 },
                 ],
-                color: [220, 210, 195],
+                color: [60, 210, 90],
                 x: 0.85,
                 y: 0.55,
                 vx: -0.28,
@@ -278,7 +351,7 @@ export class OnboardingView extends LitElement {
                     { ox: -0.2, oy: -0.12, r: 0.75 },
                     { ox: -0.1, oy: -0.06, r: 0.4 },
                 ],
-                color: [170, 190, 225],
+                color: [40, 190, 160],
                 x: 0.6,
                 y: 0.1,
                 vx: -0.2,
@@ -292,7 +365,7 @@ export class OnboardingView extends LitElement {
                     { ox: 0.17, oy: 0.15, r: 0.75 },
                     { ox: 0.08, oy: 0.07, r: 0.35 },
                 ],
-                color: [200, 190, 220],
+                color: [110, 240, 150],
                 x: 0.35,
                 y: 0.4,
                 vx: 0.32,
@@ -306,7 +379,7 @@ export class OnboardingView extends LitElement {
                     { ox: -0.13, oy: 0.18, r: 0.65 },
                     { ox: -0.06, oy: 0.1, r: 0.4 },
                 ],
-                color: [215, 205, 200],
+                color: [30, 170, 110],
                 x: 0.9,
                 y: 0.85,
                 vx: -0.35,
@@ -320,7 +393,7 @@ export class OnboardingView extends LitElement {
                     { ox: 0.16, oy: -0.1, r: 0.6 },
                     { ox: 0.08, oy: -0.05, r: 0.35 },
                 ],
-                color: [185, 210, 205],
+                color: [150, 235, 100],
                 x: 0.45,
                 y: 0.9,
                 vx: 0.22,
@@ -337,7 +410,7 @@ export class OnboardingView extends LitElement {
             const h = canvas.height;
             const dim = Math.min(w, h);
 
-            ctx.fillStyle = '#f0f0f0';
+            ctx.fillStyle = '#060f09';
             ctx.fillRect(0, 0, w, h);
 
             for (const blob of blobs) {
@@ -384,6 +457,7 @@ export class OnboardingView extends LitElement {
         if (this.currentSlide === 0) {
             return html`
                 <div class="slide">
+                    <div class="eyebrow">Step 01</div>
                     <div class="slide-title">Helping Hands</div>
                     <div class="slide-text">Real-time AI that listens, watches, and helps during interviews, meetings, and exams.</div>
                     <div class="actions">
@@ -393,7 +467,7 @@ export class OnboardingView extends LitElement {
                                 this.currentSlide = 1;
                             }}
                         >
-                            Continue
+                            Continue →
                         </button>
                     </div>
                 </div>
@@ -402,6 +476,7 @@ export class OnboardingView extends LitElement {
 
         return html`
             <div class="slide">
+                <div class="eyebrow">Step 02</div>
                 <div class="slide-title">Add context</div>
                 <div class="slide-text">Paste your resume or any info the AI should know. You can skip this and add it later.</div>
                 <textarea
@@ -411,14 +486,14 @@ export class OnboardingView extends LitElement {
                     @input=${this.handleContextInput}
                 ></textarea>
                 <div class="actions">
-                    <button class="btn-primary" @click=${this.completeOnboarding}>Get Started</button>
+                    <button class="btn-primary" @click=${this.completeOnboarding}>Get Started →</button>
                     <button
                         class="btn-back"
                         @click=${() => {
                             this.currentSlide = 0;
                         }}
                     >
-                        Back
+                        ← Back
                     </button>
                 </div>
             </div>
@@ -430,6 +505,7 @@ export class OnboardingView extends LitElement {
             <div class="onboarding">
                 <canvas class="aurora"></canvas>
                 <canvas class="dither"></canvas>
+                <div class="scanlines"></div>
                 ${this.renderSlide()}
             </div>
         `;

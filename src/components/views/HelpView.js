@@ -24,24 +24,42 @@ export class HelpView extends LitElement {
 
             .shortcut-label {
                 color: var(--text-secondary);
-                font-size: var(--font-size-xs);
+                font-size: var(--font-size-sm);
             }
 
             .shortcut-keys {
                 display: inline-flex;
-                gap: 4px;
+                gap: 5px;
                 flex-wrap: wrap;
                 justify-content: flex-end;
             }
 
             .key {
-                border: 1px solid var(--border);
-                border-radius: var(--radius-sm);
-                padding: 2px 6px;
+                border: 1px solid var(--border-strong);
+                border-bottom: 2px solid var(--accent);
+                border-radius: 0;
+                padding: 5px 9px;
                 font-size: var(--font-size-xs);
+                letter-spacing: 0.04em;
                 color: var(--text-primary);
-                background: var(--bg-surface);
+                background: var(--bg-elevated);
                 font-family: var(--font-mono);
+            }
+
+            .section-eyebrow {
+                font-family: var(--font-mono);
+                font-size: var(--font-size-xs);
+                font-weight: var(--font-weight-medium);
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                color: var(--text-muted);
+                margin-bottom: var(--space-sm);
+            }
+
+            /* HUD readout prefix */
+            .section-eyebrow::before {
+                content: '// ';
+                color: var(--accent);
             }
 
             .list {
@@ -67,11 +85,13 @@ export class HelpView extends LitElement {
 
             .link-button {
                 border: 1px solid var(--border);
-                border-radius: var(--radius-sm);
-                padding: 8px 10px;
+                border-radius: var(--radius-md);
+                padding: 9px 14px;
                 background: var(--bg-elevated);
-                color: var(--text-primary);
+                color: var(--text-secondary);
+                font-family: var(--font-mono);
                 font-size: var(--font-size-sm);
+                font-weight: var(--font-weight-medium);
                 cursor: pointer;
                 transition:
                     border-color var(--transition),
@@ -81,8 +101,8 @@ export class HelpView extends LitElement {
 
             .link-button:hover {
                 color: var(--text-primary);
-                border-color: var(--accent);
-                background: rgba(63, 125, 229, 0.14);
+                border-color: var(--border-strong);
+                background: var(--accent-soft);
             }
 
             @media (max-width: 820px) {
@@ -163,7 +183,7 @@ export class HelpView extends LitElement {
                     <div class="page-title">Help</div>
 
                     <section class="surface">
-                        <div class="surface-title">Support</div>
+                        <div class="surface-title section-eyebrow">Support</div>
                         <div class="link-row">
                             <button class="link-button" @click=${() => this._open('https://cheatingdaddy.com')}>Website</button>
                             <button class="link-button" @click=${() => this._open('https://github.com/rajurathod0577/helping-hands')}>GitHub</button>
@@ -172,7 +192,7 @@ export class HelpView extends LitElement {
                     </section>
 
                     <section class="surface">
-                        <div class="surface-title">Keyboard Shortcuts</div>
+                        <div class="surface-title section-eyebrow">Keyboard Shortcuts</div>
                         <div class="shortcut-grid">
                             ${shortcutRows.map(
                                 ([label, keys]) => html`

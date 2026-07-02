@@ -23,10 +23,16 @@ export class HelpingHandsApp extends LitElement {
             display: block;
             width: 100%;
             height: 100vh;
-            /* Uses the Settings "Background Transparency" alpha (baked into --bg-app),
-               so the whole overlay — live and non-live — matches the chosen transparency. */
-            background: var(--bg-app);
+            /* Opening / home / settings screens stay fully solid — the transparency
+               setting is an overlay concern, so it must not make these see-through. */
+            background: var(--bg-app-solid);
             color: var(--text-primary);
+        }
+
+        /* Live interview overlay: apply the Settings "Background Transparency" alpha
+           (baked into --bg-app) so the overlay window is translucent over the desktop. */
+        :host([live]) {
+            background: var(--bg-app);
         }
 
         /* ── Full app shell: top bar + sidebar/content ── */
@@ -95,6 +101,7 @@ export class HelpingHandsApp extends LitElement {
         }
 
         .sidebar {
+            position: relative;
             width: var(--sidebar-width);
             min-width: var(--sidebar-width);
             background: var(--bg-surface);
@@ -106,6 +113,19 @@ export class HelpingHandsApp extends LitElement {
                 width var(--transition),
                 min-width var(--transition),
                 opacity var(--transition);
+        }
+
+        /* HUD console rail: a phosphor top hairline readout line */
+        .sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, var(--accent), transparent 65%);
+            opacity: 0.55;
+            pointer-events: none;
         }
 
         .sidebar.hidden {
@@ -129,26 +149,38 @@ export class HelpingHandsApp extends LitElement {
         .brand-mark {
             width: 26px;
             height: 26px;
-            border-radius: 8px;
-            background: var(--accent-gradient);
-            box-shadow: var(--shadow-accent);
+            border-radius: 0;
+            overflow: hidden;
+            /* Angular chamfer + phosphor glow (drop-shadow survives clip-path) */
+            clip-path: polygon(
+                0 0,
+                calc(100% - var(--hud-cut-sm)) 0,
+                100% var(--hud-cut-sm),
+                100% 100%,
+                var(--hud-cut-sm) 100%,
+                0 calc(100% - var(--hud-cut-sm))
+            );
+            filter: drop-shadow(0 0 8px rgba(59, 232, 107, 0.5));
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
         }
 
-        .brand-mark svg {
-            width: 15px;
-            height: 15px;
-            color: #fff;
+        .brand-mark img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
         }
 
         .sidebar-brand h1 {
+            font-family: var(--font-display);
             font-size: var(--font-size-base);
             font-weight: var(--font-weight-semibold);
             color: var(--text-primary);
             letter-spacing: -0.02em;
+            text-shadow: 0 0 8px rgba(59, 232, 107, 0.35);
         }
 
         .sidebar-nav {
@@ -188,6 +220,7 @@ export class HelpingHandsApp extends LitElement {
         .nav-item.active {
             color: var(--accent);
             background: var(--accent-soft);
+            text-shadow: 0 0 8px rgba(59, 232, 107, 0.25);
         }
 
         .nav-item.active::before {
@@ -198,8 +231,9 @@ export class HelpingHandsApp extends LitElement {
             transform: translateY(-50%);
             width: 3px;
             height: 18px;
-            border-radius: 0 3px 3px 0;
+            border-radius: 0;
             background: var(--accent);
+            box-shadow: 0 0 8px rgba(59, 232, 107, 0.6);
         }
 
         .nav-item svg {
@@ -292,9 +326,9 @@ export class HelpingHandsApp extends LitElement {
            its children (.live-bar-left/center/right, .brand-chip,
            .brand-dot, .live-bar-profile, .tool-chip, .status-pill,
            .status-dot, .live-timer, .live-bar-text, .icon-btn).
-           NOTE: .content.live { background: transparent } and the
-           @keyframes status-pulse already exist in this stylesheet and
-           are intentionally reused — do NOT re-declare them.
+           NOTE: .content.live { background: transparent } already exists
+           in this stylesheet; pulsing dots share the local @keyframes
+           hh-pulse defined below (kit motion).
            ============================================================ */
 
         /* ---- Container: the glass pill ---- */
@@ -309,22 +343,54 @@ export class HelpingHandsApp extends LitElement {
             height: 46px;
             margin: var(--space-sm);
             padding: 7px 10px 7px 12px;
-            /* --bg-surface already carries the user's Settings transparency (alpha);
-               use it directly so the toolbar matches the chosen transparency. */
-            background: var(--bg-surface);
-            backdrop-filter: blur(20px) saturate(1.2);
-            -webkit-backdrop-filter: blur(20px) saturate(1.2);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-lg, 0 10px 32px rgba(0, 0, 0, 0.34));
+            /* The chamfer + glass + scanline live on the ::before backing (z-index:-1)
+               so the toolbar itself is NOT clipped — a clip-path here would crop the
+               drop-down overflow menu, which is a descendant. */
+            background: transparent;
+            border: none;
+            border-radius: 0;
             /* the bar background is itself a drag handle */
             -webkit-app-region: drag;
             animation: tb-enter 180ms cubic-bezier(0.16, 1, 0.3, 1);
         }
 
+        /* HUD backing: chamfered translucent glass + CRT scanline + phosphor glow.
+           Uses filter: drop-shadow (not box-shadow) because clip-path hides an
+           outside box-shadow. Sits below dividers/content via z-index:-1. */
+        .live-toolbar::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            /* Solid layer uses --bg-surface (carries the Settings transparency alpha)
+               so the live overlay respects "Background Transparency". */
+            background:
+                repeating-linear-gradient(0deg, rgba(59, 232, 107, 0.05) 0 1px, transparent 1px 3px),
+                var(--bg-surface);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-strong);
+            clip-path: polygon(
+                0 0,
+                calc(100% - var(--hud-cut)) 0,
+                100% var(--hud-cut),
+                100% 100%,
+                var(--hud-cut) 100%,
+                0 calc(100% - var(--hud-cut))
+            );
+            filter: drop-shadow(0 12px 30px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 12px rgba(59, 232, 107, 0.4));
+            pointer-events: none;
+        }
+
         @keyframes tb-enter {
             from { opacity: 0; transform: translateY(-4px); }
             to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Kit motion — shared by every pulsing live dot in this shadow root */
+        @keyframes hh-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%      { opacity: 0.35; transform: scale(0.82); }
         }
 
         /* ---- Clusters — every interactive surface lives in a no-drag cluster ---- */
@@ -376,18 +442,18 @@ export class HelpingHandsApp extends LitElement {
             justify-content: center;
             width: 18px;
             height: 18px;
-            border-radius: 6px;
-            background: var(--accent-gradient);
-            color: var(--text-primary);
+            border-radius: 0;
+            overflow: hidden;
             box-shadow: 0 2px 8px var(--accent-soft);
             flex-shrink: 0;
         }
-        .tb-mark svg { width: 12px; height: 12px; display: block; }
+        .tb-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .tb-wordmark {
+            font-family: var(--font-display);
             font-size: 13px;
             font-weight: var(--font-weight-semibold);
             color: var(--text-primary);
-            letter-spacing: -0.01em;
+            letter-spacing: 0;
             overflow: hidden;
             text-overflow: ellipsis;
         }
@@ -422,8 +488,8 @@ export class HelpingHandsApp extends LitElement {
         .tb-bar {
             width: 2px;
             height: 12px;
-            border-radius: 1px;
-            background: var(--success-color);
+            border-radius: 0;
+            background: var(--accent);   /* kit listening green */
             transform: scaleY(0.3);     /* idle: flat */
             transform-origin: center;
             opacity: 0.4;
@@ -473,9 +539,37 @@ export class HelpingHandsApp extends LitElement {
             opacity: 1;
             transform: scale(1);
         }
-        /* mic badge pulses while active (reuses existing status-pulse keyframe) */
+        /* mic badge pulses while active (kit hh-pulse) */
         .tb-mic.is-active .tb-badge-pulse {
-            animation: status-pulse 1.4s ease-in-out infinite;
+            animation: hh-pulse 1.4s ease-in-out infinite;
+        }
+
+        /* ---- HUD status readout: "● LISTENING" / "○ IDLE" ---- */
+        .tb-readout {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            white-space: nowrap;
+            cursor: default;
+        }
+        .tb-readout.is-live {
+            color: var(--accent);
+        }
+        .tb-readout-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            flex-shrink: 0;
+        }
+        .tb-readout.is-live .tb-readout-dot {
+            box-shadow: 0 0 6px rgba(59, 232, 107, 0.6);
+            animation: hh-pulse 1.4s ease-in-out infinite;
         }
 
         /* ============================================================
@@ -557,7 +651,169 @@ export class HelpingHandsApp extends LitElement {
         }
         .tb-timer.is-recording .tb-rec-dot {
             background: var(--error-color);
-            animation: status-pulse 1.4s ease-in-out infinite;
+            animation: hh-pulse 1.4s ease-in-out infinite;
+        }
+
+        /* ---- live cost counter ---- */
+        .tb-cost {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 6px;
+            height: 26px;
+            padding: 4px 10px;
+            background: var(--accent-soft);
+            border: 1px solid var(--accent);
+            border-radius: var(--radius-pill);
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            cursor: default;
+            -webkit-app-region: no-drag;
+        }
+        .tb-cost-usd {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        .tb-cost-inr {
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+
+        /* ---- end-of-session cost card ---- */
+        .cost-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.55);
+            -webkit-app-region: no-drag;
+        }
+        .cost-card {
+            width: min(360px, 88vw);
+            background: var(--bg-elevated);
+            border: 1px solid var(--accent);
+            box-shadow: var(--shadow-accent-lg, 0 0 24px rgba(59, 232, 107, 0.35));
+            padding: 20px;
+            font-family: var(--font);
+            clip-path: polygon(
+                var(--hud-cut) 0,
+                100% 0,
+                100% calc(100% - var(--hud-cut)),
+                calc(100% - var(--hud-cut)) 100%,
+                0 100%,
+                0 var(--hud-cut)
+            );
+        }
+        .cost-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.18em;
+            color: var(--accent);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        .cost-total {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin-bottom: 2px;
+        }
+        .cost-total-usd {
+            font-family: var(--font-mono);
+            font-size: 30px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+        .cost-total-inr {
+            font-size: 13px;
+            color: var(--accent);
+        }
+        .cost-duration {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+        }
+        .cost-lines {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid var(--border);
+            padding-top: 12px;
+        }
+        .cost-line-main {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+        .cost-line-label {
+            font-family: var(--font-mono);
+        }
+        .cost-line-usd {
+            font-family: var(--font-mono);
+            font-variant-numeric: tabular-nums;
+            color: var(--accent);
+        }
+        .cost-line-detail {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .cost-note {
+            color: var(--warning-color, var(--text-secondary));
+        }
+        .cost-actual {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--accent);
+        }
+        .cost-actual-label {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--accent);
+        }
+        .cost-actual-val {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .cost-actual-inr {
+            font-size: 11px;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+        .cost-foot {
+            margin-top: 14px;
+            font-size: 10px;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+        .cost-done {
+            margin-top: 16px;
+            width: 100%;
+            height: 36px;
+            background: var(--accent);
+            color: var(--start-button-color, #04140a);
+            border: none;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+        .cost-done:hover {
+            filter: brightness(1.08);
         }
 
         /* ---- icon-only utility buttons ---- */
@@ -565,12 +821,12 @@ export class HelpingHandsApp extends LitElement {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 30px;
-            height: 30px;
+            width: 32px;
+            height: 32px;
             color: var(--text-secondary);
-            background: transparent;
-            border: none;
-            border-radius: 8px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 0;
             cursor: pointer;
             touch-action: manipulation;
             -webkit-app-region: no-drag;
@@ -637,7 +893,7 @@ export class HelpingHandsApp extends LitElement {
             color: var(--text-primary);
             background: transparent;
             border: none;
-            border-radius: 6px;
+            border-radius: 0;
             cursor: pointer;
             text-align: left;
             white-space: nowrap;
@@ -655,30 +911,75 @@ export class HelpingHandsApp extends LitElement {
             font-size: 0.72rem;
             color: var(--text-muted);
         }
-        .tb-menu-item.tb-danger { color: var(--error-color); }
-        .tb-menu-item.tb-danger svg { color: var(--error-color); }
-        .tb-menu-item.tb-danger:hover { background: rgba(240, 82, 75, 0.14); }
+        .tb-menu-item.tb-danger {
+            color: var(--danger);
+            background: rgba(255, 92, 87, 0.1);
+            border: 1px solid rgba(255, 92, 87, 0.3);
+        }
+        .tb-menu-item.tb-danger svg { color: var(--danger); }
+        .tb-menu-item.tb-danger:hover { background: rgba(255, 92, 87, 0.18); }
         .tb-menu-sep {
             height: 1px;
             margin: 4px 6px;
             background: var(--border);
         }
+        /* HUD status pill: rectangular, uppercase mono, leading ● dot + tinted border */
         .tb-menu-status {
             display: flex;
             align-items: center;
-            gap: var(--space-sm);
-            height: 28px;
-            padding: 0 12px;
-            font-size: 12px;
-            color: var(--text-muted);
+            gap: 7px;
+            height: 26px;
+            margin: 2px 4px 4px;
+            padding: 0 10px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+            background: var(--accent-soft);
+            border: 1px solid var(--border-strong);
         }
         .tb-menu-dot {
-            width: 6px;
-            height: 6px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background: var(--accent);
-            box-shadow: 0 0 6px var(--accent);
+            box-shadow: var(--shadow-accent);
             flex-shrink: 0;
+            animation: hh-pulse 1.4s infinite;
+        }
+
+        /* ---- opacity slider inside the overflow menu ---- */
+        .tb-menu-slider {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 8px 12px 10px;
+        }
+        .tb-menu-slider-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+        .tb-menu-slider-head svg {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            color: var(--text-secondary);
+        }
+        .tb-menu-slider-value {
+            margin-left: auto;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+        .tb-menu-slider input[type='range'] {
+            width: 100%;
+            margin: 0;
+            accent-color: var(--accent);
+            cursor: pointer;
         }
 
         /* ---- collapse gate: hide answer card + detached transcript, keep toolbar ---- */
@@ -706,7 +1007,9 @@ export class HelpingHandsApp extends LitElement {
             .tb-menu { animation: none; }
             .tb-wave.is-listening .tb-bar { animation: none; transform: scaleY(0.3); }
             .tb-mic.is-active .tb-badge-pulse,
-            .tb-timer.is-recording .tb-rec-dot { animation: none; }
+            .tb-timer.is-recording .tb-rec-dot,
+            .tb-readout.is-live .tb-readout-dot,
+            .tb-menu-dot { animation: none; }
             .tb-action:active,
             .tb-icon:active { transform: none; }
             .tb-chevron { transition: none; }
@@ -744,7 +1047,7 @@ export class HelpingHandsApp extends LitElement {
 
         ::-webkit-scrollbar-thumb {
             background: var(--border-strong);
-            border-radius: 3px;
+            border-radius: 0;
         }
 
         ::-webkit-scrollbar-thumb:hover {
@@ -775,6 +1078,9 @@ export class HelpingHandsApp extends LitElement {
         _whisperDownloading: { state: true },
         _collapsed: { state: true },
         _menuOpen: { state: true },
+        _backgroundTransparency: { state: true },
+        _liveCost: { state: true },
+        _sessionCostCard: { state: true },
     };
 
     constructor() {
@@ -804,6 +1110,10 @@ export class HelpingHandsApp extends LitElement {
         this._localVersion = '';
         this._collapsed = false;
         this._menuOpen = false;
+        this._backgroundTransparency = 0.8;
+        this._liveCost = null; // running cost snapshot from main (for the live counter)
+        this._liveCostAt = 0; // Date.now() when _liveCost was received (for per-second ticking)
+        this._sessionCostCard = null; // final cost summary shown after a session ends
 
         this._loadFromStorage();
         this._checkForUpdates();
@@ -842,6 +1152,7 @@ export class HelpingHandsApp extends LitElement {
             this.selectedScreenshotInterval = prefs.selectedScreenshotInterval || '5';
             this.selectedImageQuality = prefs.selectedImageQuality || 'medium';
             this.layoutMode = config.layout || 'normal';
+            this._backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
 
             this._storageLoaded = true;
             this.requestUpdate();
@@ -868,6 +1179,11 @@ export class HelpingHandsApp extends LitElement {
             ipcRenderer.on('whisper-downloading', (_, downloading) => {
                 this._whisperDownloading = downloading;
             });
+            ipcRenderer.on('update-cost', (_, cost) => {
+                this._liveCost = cost;
+                this._liveCostAt = Date.now();
+                this.requestUpdate();
+            });
         }
     }
 
@@ -883,6 +1199,7 @@ export class HelpingHandsApp extends LitElement {
             ipcRenderer.removeAllListeners('click-through-toggled');
             ipcRenderer.removeAllListeners('reconnect-failed');
             ipcRenderer.removeAllListeners('whisper-downloading');
+            ipcRenderer.removeAllListeners('update-cost');
         }
     }
 
@@ -911,6 +1228,77 @@ export class HelpingHandsApp extends LitElement {
         const pad = n => String(n).padStart(2, '0');
         if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
         return `${m}:${pad(s)}`;
+    }
+
+    // ── Cost (live counter + end-of-session card) ──
+
+    _fmtUSD(n) {
+        const v = n || 0;
+        if (v === 0) return '$0';
+        if (v < 0.01) return '$' + v.toFixed(4);
+        if (v < 1) return '$' + v.toFixed(3);
+        return '$' + v.toFixed(2);
+    }
+
+    _fmtINR(n) {
+        const v = n || 0;
+        if (v === 0) return '₹0';
+        if (v < 1) return '₹' + v.toFixed(2);
+        if (v < 100) return '₹' + v.toFixed(1);
+        return '₹' + Math.round(v);
+    }
+
+    // Live totals: the last snapshot from main, plus audio cost accrued since (audio
+    // bills per second, so we tick it between answers for a smooth running counter).
+    _liveTotals() {
+        const c = this._liveCost;
+        if (!c) return { usd: 0, inr: 0 };
+        const extraSec = this._liveCostAt ? Math.max(0, (Date.now() - this._liveCostAt) / 1000) : 0;
+        const usd = (c.totalUSD || 0) + (c.audioUsdPerSec || 0) * extraSec;
+        return { usd, inr: usd * (c.usdToInr || 88) };
+    }
+
+    _renderCostCard() {
+        const c = this._sessionCostCard;
+        if (!c) return '';
+        return html`
+            <div class="cost-overlay" @click=${() => (this._sessionCostCard = null)}>
+                <div class="cost-card" role="dialog" aria-label="Session cost" @click=${e => e.stopPropagation()}>
+                    <div class="cost-eyebrow">// SESSION COST</div>
+                    <div class="cost-total">
+                        <span class="cost-total-usd">${c.totalText}</span>
+                        <span class="cost-total-inr">≈ ${c.inrText}</span>
+                    </div>
+                    <div class="cost-duration">Duration ${c.durationText}${c.estimated ? ' · token counts estimated' : ''}</div>
+                    <div class="cost-lines">
+                        ${(c.lines || []).map(
+                            line => html`
+                                <div class="cost-line">
+                                    <div class="cost-line-main">
+                                        <span class="cost-line-label">${line.label}</span>
+                                        <span class="cost-line-usd">${line.usdText}</span>
+                                    </div>
+                                    <div class="cost-line-detail">${line.detail}${line.note ? html` · <span class="cost-note">${line.note}</span>` : ''}</div>
+                                </div>
+                            `
+                        )}
+                        ${!c.lines || c.lines.length === 0 ? html`<div class="cost-line-detail">No billable usage recorded.</div>` : ''}
+                    </div>
+                    ${c.actualCharged && c.actualCharged.amount > 0
+                        ? html`<div class="cost-actual">
+                              <span class="cost-actual-label">✓ Charged (DeepSeek balance)</span>
+                              <span class="cost-actual-val">${c.actualCharged.text} <span class="cost-actual-inr">≈ ${c.actualCharged.inrText}</span></span>
+                          </div>`
+                        : ''}
+                    <div class="cost-foot">
+                        Live prices via LiteLLM (updated daily); token counts from each provider's usage report.${c.actualCharged
+                            ? ' DeepSeek total reconciled against your account balance.'
+                            : ''}
+                    </div>
+                    <button class="cost-done" @click=${() => (this._sessionCostCard = null)}>Done</button>
+                </div>
+            </div>
+        `;
     }
 
     // ── Status & Responses ──
@@ -956,15 +1344,20 @@ export class HelpingHandsApp extends LitElement {
     async handleClose() {
         if (this.currentView === 'assistant') {
             helpingHands.stopCapture();
+            let cost = null;
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
-                await ipcRenderer.invoke('close-session');
+                const result = await ipcRenderer.invoke('close-session');
+                cost = result && result.cost ? result.cost : null;
             }
             this.sessionActive = false;
             this._collapsed = false;
             this._menuOpen = false;
+            this._liveCost = null;
             this._stopTimer();
             this.currentView = 'main';
+            // Show the estimated cost of the interview that just ended.
+            if (cost) this._sessionCostCard = cost;
         } else {
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
@@ -991,7 +1384,9 @@ export class HelpingHandsApp extends LitElement {
 
     async handleStart() {
         const prefs = await helpingHands.storage.getPreferences();
-        const providerMode = prefs.providerMode === 'cloud' ? 'byok' : prefs.providerMode || 'byok';
+        const rawProviderMode = prefs.providerMode || 'api';
+        // Normalize legacy modes ('cloud'/'byok') to 'api'
+        const providerMode = rawProviderMode === 'cloud' || rawProviderMode === 'byok' ? 'api' : rawProviderMode;
         const providerConfig = prefs.providerConfig || { audio: 'gemini', text: 'groq', image: 'gemini' };
 
         if (providerMode === 'cloud') {
@@ -1057,6 +1452,8 @@ export class HelpingHandsApp extends LitElement {
         this.currentResponseIndex = -1;
         this.liveTranscript = '';
         this._collapsed = false;
+        this._liveCost = null;
+        this._sessionCostCard = null;
         this.startTime = Date.now();
         this.sessionActive = true;
         this.currentView = 'assistant';
@@ -1135,9 +1532,15 @@ export class HelpingHandsApp extends LitElement {
     updated(changedProperties) {
         super.updated(changedProperties);
 
-        if (changedProperties.has('currentView') && window.require) {
-            const { ipcRenderer } = window.require('electron');
-            ipcRenderer.send('view-changed', this.currentView);
+        if (changedProperties.has('currentView')) {
+            // Reflect live state to the host so :host([live]) can switch the window
+            // from solid (opening/home) to the translucent interview overlay.
+            this.toggleAttribute('live', this._isLiveMode());
+
+            if (window.require) {
+                const { ipcRenderer } = window.require('electron');
+                ipcRenderer.send('view-changed', this.currentView);
+            }
         }
     }
 
@@ -1209,6 +1612,10 @@ export class HelpingHandsApp extends LitElement {
                         .selectedProfile=${this.selectedProfile}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
+                        .backgroundTransparency=${this._backgroundTransparency}
+                        .onOpacityChange=${v => this.handleOpacityChange({ target: { value: v } })}
+                        .onClose=${() => this.handleClose()}
+                        .onClear=${() => this.clearResponses()}
                         @response-index-changed=${this.handleResponseIndexChanged}
                         @response-animation-complete=${() => {
                             this.shouldAnimateResponse = false;
@@ -1301,9 +1708,7 @@ export class HelpingHandsApp extends LitElement {
             <div class="sidebar ${this._isLiveMode() ? 'hidden' : ''}">
                 <div class="sidebar-brand">
                     <span class="brand-mark">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 2v6m0 0 3-2m-3 2L9 6M5 12H2m20 0h-3M7 17l-2 2m12-2 2 2M12 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
-                        </svg>
+                        <img src="assets/logo.png" alt="Helping Hands" />
                     </span>
                     <h1>Helping Hands</h1>
                 </div>
@@ -1367,10 +1772,7 @@ export class HelpingHandsApp extends LitElement {
                 <div class="tb-left">
                     <span class="tb-brand">
                         <span class="tb-mark" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15l-1.7-4L6 9.3l4.3-1.7L12 3Z" />
-                                <path d="M18.5 14.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7Z" />
-                            </svg>
+                            <img src="assets/logo.png" alt="Helping Hands" />
                         </span>
                         <span class="tb-wordmark">Helping Hands</span>
                     </span>
@@ -1380,6 +1782,12 @@ export class HelpingHandsApp extends LitElement {
                     <span class="tb-subdivider" aria-hidden="true"></span>
 
                     <span class="tb-status" role="group" aria-label="Live status">
+                        <!-- (0) HUD status readout — reflects the real listening state -->
+                        <span class="tb-readout ${isListening ? 'is-live' : ''}" aria-hidden="true">
+                            <span class="tb-readout-dot"></span>
+                            <span>${isListening ? 'Listening' : 'Idle'}</span>
+                        </span>
+
                         <!-- (1) faux audio waveform — CSS-only, animates only while listening -->
                         <span
                             class="tb-wave ${isListening ? 'is-listening' : ''}"
@@ -1469,6 +1877,12 @@ export class HelpingHandsApp extends LitElement {
 
                 <!-- RIGHT: session meta + window controls -->
                 <div class="tb-right" role="group" aria-label="Session and window controls">
+                    ${this._liveCost
+                        ? html`<span class="tb-cost" title="Estimated API cost so far (USD · INR)" aria-label="Estimated cost so far ${this._fmtUSD(this._liveTotals().usd)}">
+                              <span class="tb-cost-usd">${this._fmtUSD(this._liveTotals().usd)}</span>
+                              <span class="tb-cost-inr">${this._fmtINR(this._liveTotals().inr)}</span>
+                          </span>`
+                        : ''}
                     <span class="tb-timer ${sessionActive ? 'is-recording' : ''}" aria-label="Elapsed time ${this.getElapsedTime()}">
                         <span class="tb-rec-dot" aria-hidden="true"></span>
                         <span class="tb-time-digits">${this.getElapsedTime()}</span>
@@ -1511,13 +1925,6 @@ export class HelpingHandsApp extends LitElement {
                                             <path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5" />
                                         </svg>
                                         <span>New session</span>
-                                    </button>
-                                    <div class="tb-menu-sep" role="separator"></div>
-                                    <button class="tb-menu-item tb-danger" role="menuitem" @click=${() => this.menuAction('end')}>
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                            <path d="M18 6 6 18M6 6l12 12" />
-                                        </svg>
-                                        <span>End session</span>
                                     </button>
                                 </div>`
                             : ''}
@@ -1630,6 +2037,30 @@ export class HelpingHandsApp extends LitElement {
         else if (kind === 'end') this.handleClose();
     }
 
+    // Clear the current answer history (the answer-panel toolbar's trash button).
+    clearResponses() {
+        this.responses = [];
+        this.currentResponseIndex = -1;
+        this.requestUpdate();
+    }
+
+    async handleOpacityChange(e) {
+        this._backgroundTransparency = parseFloat(e.target.value);
+        // Apply live so the overlay updates while dragging, then persist.
+        try {
+            const themeName = helpingHands.theme.current;
+            const colors = helpingHands.theme.get(themeName);
+            helpingHands.theme.applyBackgrounds(colors.background, this._backgroundTransparency);
+        } catch (err) {
+            console.error('Failed to apply overlay opacity:', err);
+        }
+        try {
+            await helpingHands.storage.updatePreference('backgroundTransparency', this._backgroundTransparency);
+        } catch (err) {
+            console.error('Failed to persist overlay opacity:', err);
+        }
+    }
+
     render() {
         // Onboarding is fullscreen, no sidebar
         if (this.currentView === 'onboarding') {
@@ -1653,6 +2084,7 @@ export class HelpingHandsApp extends LitElement {
                     ${isLive ? this.renderLiveBar() : ''}
                     <div class="content-inner ${isLive ? 'live' : ''} ${isLive && this._collapsed ? 'collapsed' : ''}">${this.renderCurrentView()}</div>
                 </div>
+                ${this._renderCostCard()}
             </div>
         `;
     }

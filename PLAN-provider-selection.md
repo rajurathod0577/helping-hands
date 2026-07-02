@@ -1,12 +1,12 @@
 # Plan: Add AI Provider Selection (Mix & Match)
 
 ## Goal
-Add OpenRouter and DeepSeek as BYOK providers, and allow users to mix providers per task (Audio STT, Text LLM, Image Vision) via settings page dropdowns.
+Add OpenRouter and DeepSeek as Hosted AI providers, and allow users to mix providers per task (Audio STT, Text LLM, Image Vision) via settings page dropdowns.
 
 ## Current Architecture
-- **BYOK mode**: Gemini Live (audio) → Groq/Gemma (text) → Gemini Flash (images)
+- **Hosted AI mode**: Gemini Live (audio) → Groq/Gemma (text) → Gemini Flash (images)
 - **Local mode**: Whisper (STT) → Ollama (LLM)
-- Provider selection is a binary toggle (BYOK vs Local) on MainView
+- Provider selection is a binary toggle (Hosted AI vs Local) on MainView
 
 ## Target Architecture
 Users configure providers per task in Settings (CustomizeView):
@@ -46,7 +46,7 @@ Add a new "AI Providers" section with three dropdowns:
 Each dropdown shows only providers that support that task. When a provider requiring an API key is selected but no key is set, show a warning/link to enter the key.
 
 ### 4. `src/components/views/MainView.js` — Add API key inputs
-Add input fields for OpenRouter and DeepSeek API keys in the BYOK mode section (alongside existing Gemini and Groq key inputs).
+Add input fields for OpenRouter and DeepSeek API keys in the Hosted AI mode section (alongside existing Gemini and Groq key inputs).
 
 ### 5. `src/utils/renderer.js` — Update initialization
 - Read `providerConfig` from preferences
@@ -91,6 +91,6 @@ Add input fields for OpenRouter and DeepSeek API keys in the BYOK mode section (
 - OpenAI-compatible format
 
 ## Backwards Compatibility
-- Existing users with `providerMode: 'byok'` continue working with Gemini + Groq
+- Existing users with a legacy `providerMode` of `'byok'`/`'cloud'` are normalized to `'api'` on load and continue working with Gemini + Groq
 - New `providerConfig` defaults match current behavior (Gemini audio, Groq text, Gemini image)
 - No breaking changes to IPC handlers

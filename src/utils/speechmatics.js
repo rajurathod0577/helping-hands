@@ -20,6 +20,7 @@ function getGemini() {
 
 let client = null;
 let isStarting = false;
+let audioBytesSent = 0; // raw PCM bytes streamed this session — for exact audio-duration/cost
 let conversation = ''; // full running conversation (every finalized utterance) — shown live
 let currentUtterance = ''; // finalized text for the in-progress segment (resets each utterance)
 let lastUtterance = ''; // the most recently completed utterance (the "last asked question" candidate)
@@ -116,6 +117,7 @@ async function initSpeechmatics(apiKey, options = {}) {
     conversation = '';
     currentUtterance = '';
     lastUtterance = '';
+    audioBytesSent = 0;
     client = new RealtimeClient();
 
     client.addEventListener('receiveMessage', ({ data }) => {
@@ -145,10 +147,18 @@ async function initSpeechmatics(apiKey, options = {}) {
         return true;
     } catch (error) {
         console.error('[Speechmatics] Failed to start:', error);
-        getGemini().sendToRenderer(
-            'update-status',
-            'Speechmatics error: ' + (error.message || 'failed to start')
-        );
+        // The auth endpoint returns an HTML error page (not JSON) when the API key is
+        // rejected — the SDK then throws a JSON parse error. Translate that into a clear,
+        // actionable message instead of the cryptic "Failed to parse JSON response".
+        const raw = (error && (error.message || String(error))) || '';
+        const cause = error && error.cause ? String(error.cause) : '';
+        const looksLikeBadKey =
+            /parse JSON|Unexpected token|Unauthorized|forbidden|\b40[13]\b/i.test(raw) ||
+            /Unexpected token '<'|not valid JSON|<html/i.test(cause);
+        const message = looksLikeBadKey
+            ? 'Speechmatics API key looks invalid or expired — check it in Settings, or switch the Audio provider.'
+            : 'Speechmatics error: ' + (raw || 'failed to start');
+        getGemini().sendToRenderer('update-status', message);
         client = null;
         isStarting = false;
         return false;
@@ -160,6 +170,7 @@ function sendAudio(base64Data) {
     try {
         const buffer = Buffer.from(base64Data, 'base64');
         client.sendAudio(buffer);
+        audioBytesSent += buffer.length;
         return true;
     } catch (error) {
         console.error('[Speechmatics] sendAudio error:', error);
@@ -196,6 +207,12 @@ function getConversation() {
     return [conversation.trim(), currentUtterance.trim()].filter(Boolean).join(' ');
 }
 
+// Exact audio duration streamed to Speechmatics, derived from bytes sent.
+// Format is raw PCM s16le @ 24 kHz mono = 2 bytes/sample × 24000 = 48000 bytes/sec.
+function getAudioSeconds() {
+    return audioBytesSent / 48000;
+}
+
 module.exports = {
     initSpeechmatics,
     sendAudio,
@@ -203,4 +220,5 @@ module.exports = {
     isActive,
     getLastUtterance,
     getConversation,
+    getAudioSeconds,
 };

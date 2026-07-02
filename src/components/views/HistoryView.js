@@ -34,9 +34,6 @@ export class HistoryView extends LitElement {
             }
 
             .list-shell {
-                border: 1px solid var(--border);
-                border-radius: var(--radius-md);
-                background: var(--bg-surface);
                 overflow: hidden;
                 flex: 1;
                 display: flex;
@@ -47,25 +44,67 @@ export class HistoryView extends LitElement {
             .sessions-list {
                 overflow-y: auto;
                 flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: var(--space-sm);
+                padding: 2px;
             }
 
             .session-card {
+                position: relative;
                 width: 100%;
-                border: none;
-                border-bottom: 1px solid var(--border);
-                background: transparent;
+                border: 1px solid var(--border);
+                border-radius: 0;
+                background: var(--bg-elevated);
                 text-align: left;
-                padding: var(--space-sm) var(--space-md);
+                padding: 13px;
                 cursor: pointer;
-                transition: background var(--transition);
+                transition:
+                    background var(--transition),
+                    border-color var(--transition),
+                    box-shadow var(--transition);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: var(--space-sm);
             }
 
+            /* L-shaped HUD corner brackets (top-left / bottom-right) */
+            .session-card::before,
+            .session-card::after {
+                content: '';
+                position: absolute;
+                width: 10px;
+                height: 10px;
+                border: 1px solid var(--accent);
+                pointer-events: none;
+                opacity: 0.4;
+                transition: opacity var(--transition);
+            }
+
+            .session-card::before {
+                top: -1px;
+                left: -1px;
+                border-right: none;
+                border-bottom: none;
+            }
+
+            .session-card::after {
+                right: -1px;
+                bottom: -1px;
+                border-left: none;
+                border-top: none;
+            }
+
             .session-card:hover {
                 background: var(--bg-hover);
+                border-color: var(--border-strong);
+                box-shadow: 0 0 0 3px var(--accent-soft);
+            }
+
+            .session-card:hover::before,
+            .session-card:hover::after {
+                opacity: 1;
             }
 
             .session-left {
@@ -77,21 +116,101 @@ export class HistoryView extends LitElement {
             .session-profile {
                 color: var(--text-primary);
                 font-size: var(--font-size-sm);
+                font-weight: var(--font-weight-semibold);
             }
 
             .session-date {
                 color: var(--text-muted);
-                font-size: var(--font-size-xs);
+                font-size: 10px;
+                font-family: var(--font-mono);
             }
 
             .session-badge {
-                color: var(--text-secondary);
-                font-size: var(--font-size-xs);
-                background: var(--bg-elevated);
-                border: 1px solid var(--border);
-                border-radius: var(--radius-sm);
-                padding: 2px 8px;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                color: var(--accent);
+                font-size: 10px;
+                font-family: var(--font-mono);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                background: var(--accent-soft);
+                border: 1px solid var(--border-strong);
+                border-radius: 0;
+                padding: 3px 8px;
                 white-space: nowrap;
+            }
+
+            .session-badge::before {
+                content: '●';
+                font-size: 7px;
+                line-height: 1;
+                color: var(--accent);
+            }
+
+            .session-right {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                flex-shrink: 0;
+            }
+
+            .session-cost {
+                color: var(--accent);
+                font-size: 10px;
+                font-family: var(--font-mono);
+                font-variant-numeric: tabular-nums;
+                white-space: nowrap;
+            }
+
+            .detail-cost {
+                margin: var(--space-sm) 0 var(--space-md);
+                padding: 12px;
+                background: var(--accent-soft);
+                border: 1px solid var(--border-strong);
+            }
+
+            .detail-cost-head {
+                display: flex;
+                align-items: baseline;
+                gap: 10px;
+                margin-bottom: 8px;
+            }
+
+            .detail-cost-total {
+                font-family: var(--font-mono);
+                font-size: 20px;
+                font-weight: 700;
+                color: var(--text-primary);
+            }
+
+            .detail-cost-inr {
+                font-size: 12px;
+                color: var(--accent);
+            }
+
+            .detail-cost-dur {
+                margin-left: auto;
+                font-size: 10px;
+                font-family: var(--font-mono);
+                color: var(--text-muted);
+            }
+
+            .detail-cost-line {
+                display: flex;
+                justify-content: space-between;
+                font-family: var(--font-mono);
+                font-size: 11px;
+                color: var(--text-secondary);
+                padding: 2px 0;
+            }
+
+            .detail-cost-actual {
+                margin-top: 4px;
+                padding-top: 6px;
+                border-top: 1px dashed var(--accent);
+                color: var(--accent);
+                font-weight: 700;
             }
 
             .detail-top {
@@ -131,21 +250,32 @@ export class HistoryView extends LitElement {
 
             .tab-btn {
                 border: 1px solid var(--border);
-                border-radius: var(--radius-sm);
-                background: transparent;
-                color: var(--text-muted);
-                padding: 6px 10px;
+                border-radius: 0;
+                background: var(--bg-elevated);
+                color: var(--text-secondary);
+                padding: 8px 14px;
                 cursor: pointer;
-                font-size: var(--font-size-xs);
+                font-family: var(--font-mono);
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                transition:
+                    background var(--transition),
+                    color var(--transition),
+                    border-color var(--transition),
+                    box-shadow var(--transition);
             }
 
             .tab-btn:hover {
-                color: var(--text-secondary);
+                color: var(--text-primary);
+                border-color: var(--border-strong);
             }
 
             .tab-btn.active {
-                color: var(--text-primary);
-                border-color: var(--text-secondary);
+                color: #04140a;
+                background: var(--accent);
+                border-color: var(--accent);
+                box-shadow: var(--shadow-accent);
             }
 
             .details-scroll {
@@ -173,7 +303,7 @@ export class HistoryView extends LitElement {
 
             .message {
                 max-width: 75%;
-                border-radius: 16px;
+                border-radius: 0;
                 padding: 8px 12px;
                 word-break: break-word;
                 user-select: text;
@@ -474,13 +604,45 @@ export class HistoryView extends LitElement {
                                               >${this.formatDate(session.createdAt)} · ${this.formatTime(session.createdAt)}</span
                                           >
                                       </div>
-                                      ${session.messageCount > 0 ? html`<span class="session-badge">${session.messageCount}</span>` : ''}
+                                      <div class="session-right">
+                                          ${session.cost && session.cost.totalUSD > 0
+                                              ? html`<span class="session-cost" title="Estimated API cost">${session.cost.totalText} · ${session.cost.inrText}</span>`
+                                              : ''}
+                                          ${session.messageCount > 0 ? html`<span class="session-badge">${session.messageCount}</span>` : ''}
+                                      </div>
                                   </button>
                               `
                           )
                         : ''}
                 </div>
             </section>
+        `;
+    }
+
+    _renderCostSummary(cost) {
+        if (!cost) return '';
+        return html`
+            <div class="detail-cost">
+                <div class="detail-cost-head">
+                    <span class="detail-cost-total">${cost.totalText}</span>
+                    <span class="detail-cost-inr">≈ ${cost.inrText}</span>
+                    <span class="detail-cost-dur">${cost.durationText}${cost.estimated ? ' · est.' : ''}</span>
+                </div>
+                ${(cost.lines || []).map(
+                    l => html`
+                        <div class="detail-cost-line">
+                            <span>${l.label}</span>
+                            <span>${l.usdText}</span>
+                        </div>
+                    `
+                )}
+                ${cost.actualCharged && cost.actualCharged.amount > 0
+                    ? html`<div class="detail-cost-line detail-cost-actual">
+                          <span>✓ Charged (DeepSeek balance)</span>
+                          <span>${cost.actualCharged.text}</span>
+                      </div>`
+                    : ''}
+            </div>
         `;
     }
 
@@ -510,6 +672,7 @@ export class HistoryView extends LitElement {
                     ${this.formatTime(this.selectedSession.createdAt)}</span
                 >
             </div>
+            ${this.selectedSession.cost ? this._renderCostSummary(this.selectedSession.cost) : ''}
             <div class="tab-row">
                 <button
                     class="tab-btn ${this.activeTab === 'conversation' ? 'active' : ''}"

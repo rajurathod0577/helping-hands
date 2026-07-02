@@ -113,7 +113,7 @@ npm start
 
 ## Getting API Keys
 
-### Gemini API Key (Required for BYOK mode)
+### Gemini API Key (Required for Hosted AI mode)
 
 1. Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
 2. Sign in with your Google account

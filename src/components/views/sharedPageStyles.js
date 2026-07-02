@@ -31,10 +31,11 @@ export const unifiedPageStyles = css`
     }
 
     .page-title {
+        font-family: var(--font-display);
         font-size: var(--font-size-2xl);
         font-weight: var(--font-weight-semibold);
         color: var(--text-primary);
-        letter-spacing: -0.02em;
+        letter-spacing: -0.01em;
         margin-bottom: 4px;
     }
 
@@ -43,12 +44,39 @@ export const unifiedPageStyles = css`
         font-size: var(--font-size-sm);
     }
 
+    /* HUD panel — hard edges + L-shaped corner brackets (top-left / bottom-right) */
     .surface {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
+        position: relative;
+        border: 1px solid var(--border-strong);
+        border-radius: 0;
         background: var(--bg-surface);
         padding: var(--space-lg);
         box-shadow: var(--shadow-sm);
+    }
+
+    .surface::before,
+    .surface::after {
+        content: '';
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border: 1px solid var(--accent);
+        pointer-events: none;
+        opacity: 0.85;
+    }
+
+    .surface::before {
+        top: -1px;
+        left: -1px;
+        border-right: none;
+        border-bottom: none;
+    }
+
+    .surface::after {
+        right: -1px;
+        bottom: -1px;
+        border-left: none;
+        border-top: none;
     }
 
     .surface-title {
@@ -155,7 +183,7 @@ export const unifiedPageStyles = css`
 
     .pill {
         border: 1px solid var(--border);
-        border-radius: 999px;
+        border-radius: 0;
         padding: 2px 8px;
         font-size: var(--font-size-xs);
         color: var(--text-muted);

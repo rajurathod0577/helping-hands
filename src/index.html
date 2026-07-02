@@ -3,37 +3,45 @@
     <head>
         <meta http-equiv="content-security-policy" content="script-src 'self' 'unsafe-inline'" />
         <title>Helping Hands</title>
+        <!-- Brand typography (Helping Hands UI Kit): Chakra Petch · IBM Plex Sans · JetBrains Mono -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
+        />
         <style>
             :root {
-                /* Backgrounds */
-                --bg-app: #0b0b0f;
-                --bg-surface: #131318;
-                --bg-elevated: #1b1b22;
-                --bg-hover: #23232c;
+                /* Backgrounds — green-tinted near-black (UI Kit) */
+                --bg-app: #060a07; /* --bg */
+                --bg-surface: #0c120e; /* --surface */
+                --bg-elevated: #121a15; /* --elev */
+                --bg-hover: #18231b; /* --hover */
 
-                /* Text */
-                --text-primary: #f4f4f7;
-                --text-secondary: #a1a1ad;
-                --text-muted: #5c5c68;
+                /* Text — faint green-white */
+                --text-primary: #e8fbee; /* --tx */
+                --text-secondary: #8fb89c; /* --tx2 */
+                --text-muted: #5a7563; /* --tx3 */
 
-                /* Borders & Lines */
-                --border: rgba(255, 255, 255, 0.08);
-                --border-strong: rgba(255, 255, 255, 0.16);
+                /* Borders & Lines — green-tinted */
+                --border: rgba(74, 240, 130, 0.14); /* --g-line */
+                --border-strong: rgba(74, 240, 130, 0.26); /* --g-line2 */
 
-                /* Accent — violet/indigo brand (single source of truth) */
-                --accent: #6d5ef8;
-                --accent-hover: #7c6cff;
-                --accent-soft: rgba(109, 94, 248, 0.14);
-                --accent-gradient: linear-gradient(135deg, #7c6cff, #5b8def);
+                /* Accent — neon green brand (single source of truth) */
+                --accent: #3be86b; /* --g */
+                --accent-hover: #5cf088;
+                --accent-soft: rgba(59, 232, 107, 0.12); /* --g-soft */
+                --accent-gradient: linear-gradient(135deg, #3be86b, #12a24a); /* --g → --g2 */
 
                 /* Status */
-                --success: #22c55e;
-                --warning: #e0a92e;
-                --danger: #f0524b;
+                --success: #28c840;
+                --warning: #e0c93a;
+                --danger: #ff5c57;
 
-                /* Typography */
-                --font: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-                --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+                /* Typography (UI Kit) — display / body / mono */
+                --font-display: 'Chakra Petch', 'IBM Plex Sans', system-ui, sans-serif;
+                --font: 'IBM Plex Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+                --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Menlo', 'Monaco', monospace;
                 --font-size-xs: 11px;
                 --font-size-sm: 13px;
                 --font-size-base: 14px;
@@ -53,18 +61,22 @@
                 --space-xl: 40px;
                 --space-2xl: 64px;
 
-                /* Radius */
-                --radius-sm: 6px;
-                --radius-md: 10px;
-                --radius-lg: 14px;
-                --radius-xl: 18px;
-                --radius-pill: 999px;
+                /* Radius — sci-fi HUD: hard edges, no rounded corners */
+                --radius-sm: 0px;
+                --radius-md: 0px;
+                --radius-lg: 0px;
+                --radius-xl: 0px;
+                --radius-pill: 0px;
+                /* HUD chamfer (angular corner cut) for panels/buttons via clip-path */
+                --hud-cut: 10px;
+                --hud-cut-sm: 6px;
 
                 /* Elevation — soft, low-spread shadows for floating glass */
                 --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.28);
                 --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
                 --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.42);
-                --shadow-accent: 0 8px 24px rgba(109, 94, 248, 0.35);
+                --shadow-accent: 0 0 18px rgba(59, 232, 107, 0.45); /* --glow */
+                --shadow-accent-lg: 0 0 34px rgba(59, 232, 107, 0.5); /* --glow-lg */
 
                 /* Transitions */
                 --transition: 160ms ease;
@@ -97,10 +109,10 @@
                 --focus-box-shadow: transparent;
                 --scrollbar-track: var(--bg-app);
                 --scrollbar-thumb: var(--border-strong);
-                --scrollbar-thumb-hover: #444444;
+                --scrollbar-thumb-hover: #2c3f31;
                 --scrollbar-background: var(--bg-app);
                 --start-button-background: var(--accent);
-                --start-button-color: #ffffff;
+                --start-button-color: #04140a;
                 --start-button-border: var(--accent);
                 --start-button-hover-background: var(--accent-hover);
                 --start-button-hover-border: var(--accent-hover);

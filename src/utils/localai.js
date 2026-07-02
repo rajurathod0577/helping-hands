@@ -276,6 +276,7 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
         currentSystemPrompt = getSystemPrompt(profile, customPrompt, false, {
             answerFormat: stylePrefs.answerFormat,
             desiMode: stylePrefs.desiMode,
+            resume: stylePrefs.resume,
         });
 
         // Initialize Ollama client
