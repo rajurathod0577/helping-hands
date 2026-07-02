@@ -768,7 +768,7 @@ async function sendToDeepSeek(transcription) {
         return;
     }
 
-    const modelToUse = 'deepseek-chat';
+    const modelToUse = 'deepseek-v4-flash';
     console.log(`Sending to DeepSeek (${modelToUse}):`, transcription.substring(0, 100) + '...');
 
     groqConversationHistory.push({
@@ -793,7 +793,9 @@ async function sendToDeepSeek(transcription) {
                 stream: true,
                 stream_options: { include_usage: true },
                 temperature: 0.7,
-                max_tokens: 1024,
+                // deepseek-v4-flash is a reasoning model: this budget must cover the hidden
+                // "thinking" tokens AND the visible answer, so keep it generous.
+                max_tokens: 2048,
             }),
         });
 
@@ -803,6 +805,10 @@ async function sendToDeepSeek(transcription) {
             sendToRenderer('update-status', `DeepSeek error: ${response.status}`);
             return;
         }
+
+        // v4-flash spends ~1-2s reasoning before the first visible token — show a hint so
+        // the live session doesn't look frozen during that gap.
+        sendToRenderer('update-status', 'Thinking…');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -1447,7 +1453,7 @@ async function sendImageToDeepSeek(base64Data, prompt) {
         return { success: false, error: 'No DeepSeek API key configured' };
     }
 
-    const modelToUse = 'deepseek-chat';
+    const modelToUse = 'deepseek-v4-flash';
 
     try {
         console.log(`Sending image to DeepSeek (${modelToUse})...`);
@@ -1472,7 +1478,8 @@ async function sendImageToDeepSeek(base64Data, prompt) {
                     },
                 ],
                 stream: true,
-                max_tokens: 1024,
+                // v4-flash reasoning budget must cover thinking + the visible answer.
+                max_tokens: 2048,
             }),
         });
 

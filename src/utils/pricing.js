@@ -35,6 +35,8 @@ const FREE_PROVIDERS = new Set(['groq']); // Groq is used under a free daily quo
 // accurate for the providers this app bills on. Per-token USD. Refreshed values from
 // LiteLLM override these as soon as the cache populates.
 const FALLBACK_PRICES = {
+    'deepseek/deepseek-v4-flash': { input_cost_per_token: 1.4e-7, output_cost_per_token: 2.8e-7, cache_read_input_token_cost: 1.4e-8 },
+    'deepseek/deepseek-v4-pro': { input_cost_per_token: 4.35e-7, output_cost_per_token: 8.7e-7, cache_read_input_token_cost: 4.35e-8 },
     'deepseek/deepseek-chat': { input_cost_per_token: 2.8e-7, output_cost_per_token: 4.2e-7, cache_read_input_token_cost: 2.8e-8 },
     'deepseek/deepseek-reasoner': { input_cost_per_token: 2.8e-7, output_cost_per_token: 4.2e-7, cache_read_input_token_cost: 2.8e-8 },
     'gemini/gemini-2.0-flash': { input_cost_per_token: 1e-7, output_cost_per_token: 4e-7, cache_read_input_token_cost: 2.5e-8 },
